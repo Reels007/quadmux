@@ -51,6 +51,7 @@ body {
     padding: 6px;
     gap: 0;
     min-height: 0;
+    transition: grid-template-columns var(--transition-slow), grid-template-rows var(--transition-slow);
   }
 
   .gutter-col {
@@ -456,7 +457,8 @@ body {
 
   /* --- Keyboard shortcuts overlay --- */
   .shortcuts-overlay {
-    display: none;
+    display: flex;
+    visibility: hidden;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.6);
@@ -466,11 +468,12 @@ body {
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transition: opacity var(--transition-normal);
+    transition: opacity var(--transition-normal), visibility 0s var(--transition-normal);
   }
   .shortcuts-overlay.open {
-    display: flex;
+    visibility: visible;
     opacity: 1;
+    transition: opacity var(--transition-normal), visibility 0s 0s;
   }
 
   .shortcuts-box {
@@ -843,7 +846,7 @@ function setLayout(idx) {
     document.getElementById('gutter-row').style.display = 'none';
     shellEls.forEach((el, i) => { el.style.gridColumn = `${i+1}`; el.style.gridRow = '1'; });
   }
-  setTimeout(fitAll, 50);
+  setTimeout(fitAll, 350);
 }
 
 btnLayout.addEventListener('click', () => setLayout((currentLayout + 1) % layouts.length));
