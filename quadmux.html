@@ -292,90 +292,131 @@ body {
     padding: 4px;
   }
 
-  /* --- Bottom bar --- */
-  .input-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 12px;
-    background: #1a1a1a;
-    border-top: 1px solid #333;
-    flex-shrink: 0;
-  }
+/* --- Floating command palette --- */
+.input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  margin: 0 auto 12px;
+  max-width: 720px;
+  width: calc(100% - 24px);
+  background: var(--surface-2);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+  flex-shrink: 0;
+  position: relative;
+}
 
-  .input-preview {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    min-width: 80px;
-  }
+.input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 
-  .preview-target {
-    font-size: 14px;
-    font-weight: 700;
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #0a0a0a;
-    background: #333;
-    transition: background 0.15s;
-  }
+.input-pill {
+  position: absolute;
+  left: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--bg-base);
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.input-pill.visible {
+  opacity: 1;
+  transform: scale(1);
+}
 
-  .preview-arrow { color: #555; font-size: 12px; }
-  .preview-cmd { color: #999; font-size: 13px; }
+#input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 15px;
+  outline: none;
+  transition: padding-left var(--transition-fast);
+}
+#input::placeholder { color: var(--text-muted); }
+#input.has-target { padding-left: 48px; }
 
-  #input {
-    flex: 1;
-    background: #0a0a0a;
-    border: 1px solid #333;
-    border-radius: 6px;
-    padding: 7px 12px;
-    color: #e0e0e0;
-    font-family: inherit;
-    font-size: 14px;
-    outline: none;
-  }
-  #input:focus { border-color: #555; }
+.bar-buttons {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
 
-  .bar-buttons {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-  }
+.btn-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  transition: all var(--transition-fast);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.btn-icon:hover {
+  background: var(--surface-3);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.btn-icon.btn-exit {
+  color: #f87171;
+}
+.btn-icon.btn-exit:hover {
+  background: rgba(248,113,113,0.15);
+  border-color: rgba(248,113,113,0.3);
+  color: #f87171;
+}
 
-  .btn {
-    border: none;
-    border-radius: 6px;
-    padding: 7px 12px;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn-exit { background: #dc2626; color: #fff; }
-  .btn-exit:hover { background: #ef4444; }
-  .btn-clear { background: #333; color: #ccc; }
-  .btn-clear:hover { background: #444; }
-  .btn-layout { background: #333; color: #ccc; }
-  .btn-layout:hover { background: #444; }
+.mode-hint {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.mode-hint.visible { opacity: 1; }
 
-  .status {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-  }
-  .status.connected { color: #4ade80; }
-  .status.disconnected { color: #f87171; }
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f87171;
+  flex-shrink: 0;
+  transition: background var(--transition-normal);
+}
+.status-dot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74,222,128,0.4);
+  animation: status-pulse 3s ease-in-out infinite;
+}
 
-  .mode-hint {
-    font-size: 11px;
-    color: #555;
-    white-space: nowrap;
-  }
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(74,222,128,0.2); }
+  50% { box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+}
 
   /* --- Keyboard shortcuts overlay --- */
   .shortcuts-overlay {
@@ -518,19 +559,17 @@ body {
 </div>
 
 <div class="input-bar">
-  <div class="input-preview">
-    <div class="preview-target" id="preview-target">-</div>
-    <span class="preview-arrow">&rarr;</span>
-    <span class="preview-cmd" id="preview-cmd">...</span>
+  <span class="mode-hint" id="mode-hint"></span>
+  <div class="input-wrapper">
+    <div class="input-pill" id="input-pill"></div>
+    <input type="text" id="input" placeholder="Type 1-4 to target, * for all, ? for help">
   </div>
-  <input type="text" id="input" placeholder="1-4 = target, * = all.  Click pane to type direct.  Esc = bar.  ? = keys">
-  <span class="mode-hint" id="mode-hint">bar mode</span>
   <div class="bar-buttons">
-    <button class="btn btn-layout" id="btn-layout" title="Toggle layout">2x2</button>
-    <button class="btn btn-clear" id="btn-clear" title="Clear all terminals">Clear</button>
-    <button class="btn btn-exit" id="btn-exit">Exit All</button>
+    <button class="btn-icon" id="btn-layout" title="Toggle layout">&#9638;</button>
+    <button class="btn-icon" id="btn-clear" title="Clear all terminals">&#8999;</button>
+    <button class="btn-icon btn-exit" id="btn-exit" title="Exit all instances">&#9211;</button>
   </div>
-  <span class="status disconnected" id="status">disconnected</span>
+  <div class="status-dot" id="status-dot" title="disconnected"></div>
 </div>
 
 <!-- Keyboard shortcuts overlay -->
@@ -564,9 +603,8 @@ const WS_URL = `ws://${location.host}`;
 const colors = { 0: '#4ade80', 1: '#60a5fa', 2: '#facc15', 3: '#c084fc' };
 const shellEls = [0,1,2,3].map(i => document.getElementById(`shell-${i}`));
 const inputEl = document.getElementById('input');
-const statusEl = document.getElementById('status');
-const previewTarget = document.getElementById('preview-target');
-const previewCmd = document.getElementById('preview-cmd');
+const statusDot = document.getElementById('status-dot');
+const inputPill = document.getElementById('input-pill');
 const modeHint = document.getElementById('mode-hint');
 const btnExit = document.getElementById('btn-exit');
 const btnClear = document.getElementById('btn-clear');
@@ -655,11 +693,17 @@ function setActiveShell(idx) {
     terms[idx].focus();
     modeHint.textContent = `Claude ${idx + 1} focused`;
     modeHint.style.color = colors[idx];
+    modeHint.classList.add('visible');
+    clearTimeout(modeHint._fadeTimer);
+    modeHint._fadeTimer = setTimeout(() => modeHint.classList.remove('visible'), 2000);
   } else {
     focusLocked = false;
     inputEl.focus();
-    modeHint.textContent = 'bar mode';
-    modeHint.style.color = '#555';
+    modeHint.textContent = 'command mode';
+    modeHint.style.color = 'var(--text-muted)';
+    modeHint.classList.add('visible');
+    clearTimeout(modeHint._fadeTimer);
+    modeHint._fadeTimer = setTimeout(() => modeHint.classList.remove('visible'), 2000);
   }
 }
 
@@ -786,8 +830,8 @@ function connect() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    statusEl.textContent = 'connected';
-    statusEl.className = 'status connected';
+    statusDot.classList.add('connected');
+    statusDot.title = 'connected';
     const cols = terms[0].cols;
     const rows = terms[0].rows;
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));
@@ -795,8 +839,8 @@ function connect() {
   };
 
   ws.onclose = () => {
-    statusEl.textContent = 'disconnected';
-    statusEl.className = 'status disconnected';
+    statusDot.classList.remove('connected');
+    statusDot.title = 'disconnected';
     setTimeout(connect, 2000);
   };
 
@@ -918,18 +962,19 @@ setInterval(() => {
 inputEl.addEventListener('input', () => {
   const val = inputEl.value;
   if (val.length > 0 && val[0] === '*') {
-    previewTarget.style.background = '#fff';
-    previewTarget.textContent = '*';
-    previewCmd.textContent = val.slice(1) || '...';
+    inputPill.style.background = '#fff';
+    inputPill.textContent = 'ALL';
+    inputPill.classList.add('visible');
+    inputEl.classList.add('has-target');
   } else if (val.length > 0 && '1234'.includes(val[0])) {
     const idx = parseInt(val[0]) - 1;
-    previewTarget.style.background = colors[idx];
-    previewTarget.textContent = val[0];
-    previewCmd.textContent = val.slice(1) || '...';
+    inputPill.style.background = colors[idx];
+    inputPill.textContent = val[0];
+    inputPill.classList.add('visible');
+    inputEl.classList.add('has-target');
   } else {
-    previewTarget.style.background = '#333';
-    previewTarget.textContent = '-';
-    previewCmd.textContent = val || '...';
+    inputPill.classList.remove('visible');
+    inputEl.classList.remove('has-target');
   }
 });
 
@@ -948,15 +993,15 @@ inputEl.addEventListener('keydown', (e) => {
   const isShell = '1234'.includes(val[0]);
 
   if (!isAll && !isShell) {
-    inputEl.style.borderColor = '#f87171';
-    setTimeout(() => inputEl.style.borderColor = '#333', 500);
+    inputEl.closest('.input-bar').style.borderColor = '#f87171';
+    setTimeout(() => inputEl.closest('.input-bar').style.borderColor = '', 500);
     return;
   }
 
   const cmd = val.slice(1);
   if (!cmd) {
-    inputEl.style.borderColor = '#f87171';
-    setTimeout(() => inputEl.style.borderColor = '#333', 500);
+    inputEl.closest('.input-bar').style.borderColor = '#f87171';
+    setTimeout(() => inputEl.closest('.input-bar').style.borderColor = '', 500);
     return;
   }
 
@@ -977,9 +1022,8 @@ inputEl.addEventListener('keydown', (e) => {
   }
 
   inputEl.value = '';
-  previewTarget.style.background = '#333';
-  previewTarget.textContent = '-';
-  previewCmd.textContent = '...';
+  inputPill.classList.remove('visible');
+  inputEl.classList.remove('has-target');
 });
 
 // --- Buttons ---
