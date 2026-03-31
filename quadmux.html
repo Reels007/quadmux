@@ -280,6 +280,42 @@ body {
 }
 .shell-search button:hover { background: var(--surface-3); color: var(--text-primary); border-color: var(--border-medium); }
 
+/* --- Auto-approve toast --- */
+.shell-toast {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  font-size: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
+  pointer-events: none;
+  z-index: 5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.shell-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.shell-review-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f87171;
+  background: rgba(248,113,113,0.15);
+  border: 1px solid rgba(248,113,113,0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.shell-review-badge.visible { display: inline-block; }
+
   .s1 { --accent: #4ade80; }
   .s2 { --accent: #60a5fa; }
   .s3 { --accent: #facc15; }
@@ -478,6 +514,8 @@ body {
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
       <div class="shell-status">
+        <span class="shell-review-badge" id="review-0">REVIEW</span>
+        <span class="shell-toast" id="toast-0">auto-approved</span>
         <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">&#x1F399;</button>
         <span class="shell-focus-dot" id="focus-0"></span>
         <span class="shell-timer" id="timer-0"></span>
@@ -500,6 +538,8 @@ body {
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
       <div class="shell-status">
+        <span class="shell-review-badge" id="review-1">REVIEW</span>
+        <span class="shell-toast" id="toast-1">auto-approved</span>
         <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">&#x1F399;</button>
         <span class="shell-focus-dot" id="focus-1"></span>
         <span class="shell-timer" id="timer-1"></span>
@@ -522,6 +562,8 @@ body {
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
       <div class="shell-status">
+        <span class="shell-review-badge" id="review-2">REVIEW</span>
+        <span class="shell-toast" id="toast-2">auto-approved</span>
         <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">&#x1F399;</button>
         <span class="shell-focus-dot" id="focus-2"></span>
         <span class="shell-timer" id="timer-2"></span>
@@ -542,6 +584,8 @@ body {
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
       <div class="shell-status">
+        <span class="shell-review-badge" id="review-3">REVIEW</span>
+        <span class="shell-toast" id="toast-3">auto-approved</span>
         <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">&#x1F399;</button>
         <span class="shell-focus-dot" id="focus-3"></span>
         <span class="shell-timer" id="timer-3"></span>
@@ -919,9 +963,22 @@ function connect() {
               focusLocked = true;
               shellEls[data.shell].style.borderColor = '#f87171';
               setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
+              // Show review badge
+              const badge = document.getElementById(`review-${data.shell}`);
+              badge.classList.add('visible');
+              // Clear badge when user interacts with this pane
+              const clearBadge = () => {
+                badge.classList.remove('visible');
+                shellEls[data.shell].removeEventListener('click', clearBadge);
+              };
+              shellEls[data.shell].addEventListener('click', clearBadge);
             } else {
               // Safe - auto-approve
               ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: true }));
+              // Show toast
+              const toast = document.getElementById(`toast-${data.shell}`);
+              toast.classList.add('visible');
+              setTimeout(() => toast.classList.remove('visible'), 1500);
             }
           }
           approvalBuffers[data.shell] = '';
