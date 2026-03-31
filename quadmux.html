@@ -27,11 +27,9 @@
   --radius-md: 10px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-xs: 4px;
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease-out;
   --transition-slow: 300ms ease;
-  --color-danger: #f87171;
 }
 
 body {
@@ -53,7 +51,6 @@ body {
     padding: 6px;
     gap: 0;
     min-height: 0;
-    transition: grid-template-columns var(--transition-slow), grid-template-rows var(--transition-slow);
   }
 
   .gutter-col {
@@ -85,477 +82,260 @@ body {
   .shell {
     display: flex;
     flex-direction: column;
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     overflow: hidden;
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-1);
-    transition: border-color var(--transition-normal), box-shadow var(--transition-normal), opacity var(--transition-slow);
+    border: 2px solid transparent;
+    transition: border-color 0.3s;
     cursor: pointer;
     min-height: 0;
     min-width: 0;
   }
 
-  .shell.active {
-    border-color: color-mix(in srgb, var(--accent) 40%, transparent) !important;
-    box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent),
-                inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+  .shell.active { border-color: var(--accent) !important; }
+  .shell.flash { animation: flash 0.5s ease-out; }
+  .shell.dead { opacity: 0.4; }
+
+  .shell-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: #1a1a1a;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
   }
 
-  .shell.flash {
-    animation: flash 0.4s ease-out;
+  .shell-number {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #0a0a0a;
+    background: var(--accent);
+    flex-shrink: 0;
   }
 
-  .shell.dead {
-    opacity: 0.35;
-    transition: opacity 500ms ease;
+  .shell-title {
+    color: var(--accent);
+    cursor: text;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    min-width: 40px;
+    outline: none;
+  }
+  .shell-title:hover { border-color: #333; }
+  .shell-title:focus { border-color: var(--accent); background: #0a0a0a; }
+
+  .shell-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #555;
   }
 
-.shell-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--surface-2);
-  backdrop-filter: var(--glass-blur-md);
-  -webkit-backdrop-filter: var(--glass-blur-md);
-  font-size: 13px;
-  font-weight: 500;
-  flex-shrink: 0;
-  position: relative;
-  border-bottom: 1px solid var(--border-subtle);
-}
+  .shell-health {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+  }
+  .shell-health.dead { background: #f87171; }
 
-/* Health line along top of header */
-.shell-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
-  transition: background var(--transition-slow);
-}
-.shell.dead .shell-header::before {
-  background: var(--color-danger);
-  animation: health-pulse 2s ease-in-out infinite;
-}
+  .shell-focus-hint { display: none; color: var(--accent); }
+  .shell.active .shell-focus-hint { display: inline; }
 
-/* Active pane bottom accent line */
-.shell.active .shell-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-}
+  .shell-timer {
+    font-size: 10px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+    min-width: 44px;
+    text-align: right;
+  }
+  .shell-timer.running { color: var(--accent); }
 
-@keyframes health-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
+  .btn-voice {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #aaa;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: all 0.15s;
+  }
+  .btn-voice:hover { border-color: var(--accent); color: var(--accent); background: #2a2a2a; }
+  .btn-voice.voice-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
-.shell-number {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--bg-base);
-  background: var(--accent);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(0,0,0,0.3);
-  flex-shrink: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
+  .shell-search {
+    display: none;
+    padding: 4px 8px;
+    background: #1a1a1a;
+    border-top: 1px solid #222;
+  }
+  .shell-search.open { display: flex; gap: 4px; align-items: center; }
+  .shell-search input {
+    flex: 1;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 3px 6px;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 11px;
+    outline: none;
+  }
+  .shell-search button {
+    background: #333;
+    border: none;
+    color: #ccc;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .shell-search button:hover { background: #444; }
 
-.shell-title {
-  color: var(--text-primary);
-  cursor: text;
-  padding: 1px 4px;
-  border-radius: 3px;
-  border-bottom: 1px solid transparent;
-  min-width: 40px;
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-.shell-title:hover { border-bottom-color: var(--text-muted); }
-.shell-title:focus { border-bottom-color: var(--accent); }
-
-.shell-status {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* Health dot hidden -- using header ::before line instead */
-.shell-health { display: none; }
-
-/* Focus dot replaces "focused" text */
-.shell-focus-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--accent);
-  display: none;
-}
-.shell.active .shell-focus-dot { display: block; }
-
-.shell-focus-hint { display: none; }
-
-.shell-timer {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  min-width: 44px;
-  text-align: right;
-}
-.shell-timer.running {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-}
-
-.btn-voice {
-  background: var(--surface-2);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 2px 6px;
-  font-size: 14px;
-  line-height: 1;
-  transition: all var(--transition-fast);
-}
-.btn-voice:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  color: var(--accent);
-  background: var(--surface-3);
-}
-.btn-voice.voice-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-.shell-search {
-  display: none;
-  padding: 6px 10px;
-  background: var(--surface-2);
-  backdrop-filter: var(--glass-blur-sm);
-  -webkit-backdrop-filter: var(--glass-blur-sm);
-  border-top: 1px solid var(--border-subtle);
-}
-.shell-search.open { display: flex; gap: 6px; align-items: center; }
-.shell-search input {
-  flex: 1;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-.shell-search input:focus { border-color: var(--accent); }
-.shell-search button {
-  background: var(--surface-3);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  transition: all var(--transition-fast);
-}
-.shell-search button:hover { background: var(--surface-3); color: var(--text-primary); border-color: var(--border-medium); }
-
-/* --- Auto-approve toast --- */
-.shell-toast {
-  position: absolute;
-  top: 6px;
-  right: 12px;
-  font-size: 10px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity var(--transition-normal), transform var(--transition-normal);
-  pointer-events: none;
-  z-index: 5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
-.shell-toast.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.shell-review-badge {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-danger);
-  background: rgba(248,113,113,0.15);
-  border: 1px solid rgba(248,113,113,0.3);
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  display: none;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
-.shell-review-badge.visible { display: inline-block; }
+  .term-container {
+    flex: 1;
+    min-height: 0;
+    background: #111;
+    padding: 4px;
+  }
 
   .s1 { --accent: #4ade80; }
   .s2 { --accent: #60a5fa; }
   .s3 { --accent: #facc15; }
   .s4 { --accent: #c084fc; }
 
-  .term-container {
-    flex: 1;
-    min-height: 0;
-    background: rgba(0,0,0,0.3);
-    padding: 4px;
+  /* --- Bottom bar --- */
+  .input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    background: #1a1a1a;
+    border-top: 1px solid #333;
+    flex-shrink: 0;
   }
 
-/* --- Floating command palette --- */
-.input-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  margin: 0 auto 12px;
-  max-width: 720px;
-  width: calc(100% - 24px);
-  background: var(--surface-2);
-  backdrop-filter: var(--glass-blur-lg);
-  -webkit-backdrop-filter: var(--glass-blur-lg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
-  flex-shrink: 0;
-  position: relative;
-}
+  .input-preview {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    min-width: 80px;
+  }
 
-.input-wrapper {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
+  .preview-target {
+    font-size: 14px;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0a0a0a;
+    background: #333;
+    transition: background 0.15s;
+  }
 
-.input-pill {
-  position: absolute;
-  left: 10px;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
-  color: var(--bg-base);
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0;
-  transform: scale(0.8);
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
-.input-pill.visible {
-  opacity: 1;
-  transform: scale(1);
-}
+  .preview-arrow { color: #555; font-size: 12px; }
+  .preview-cmd { color: #999; font-size: 13px; }
 
-#input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  padding: 8px 12px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 15px;
-  outline: none;
-  transition: padding-left var(--transition-fast);
-}
-#input::placeholder { color: var(--text-muted); }
-#input.has-target { padding-left: 48px; }
+  #input {
+    flex: 1;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 7px 12px;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  #input:focus { border-color: #555; }
 
-.bar-buttons {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-}
+  .bar-buttons {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
 
-.btn-icon {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 18px;
-  line-height: 1;
-  transition: all var(--transition-fast);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
-.btn-icon:hover {
-  background: var(--surface-3);
-  border-color: var(--border-subtle);
-  color: var(--text-primary);
-}
-.btn-icon.btn-exit {
-  color: var(--color-danger);
-}
-.btn-icon.btn-exit:hover {
-  background: rgba(248,113,113,0.15);
-  border-color: rgba(248,113,113,0.3);
-  color: var(--color-danger);
-}
+  .btn {
+    border: none;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-exit { background: #dc2626; color: #fff; }
+  .btn-exit:hover { background: #ef4444; }
+  .btn-clear { background: #333; color: #ccc; }
+  .btn-clear:hover { background: #444; }
+  .btn-layout { background: #333; color: #ccc; }
+  .btn-layout:hover { background: #444; }
 
-.mode-hint {
-  position: absolute;
-  top: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity var(--transition-normal);
-  pointer-events: none;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-}
-.mode-hint.visible { opacity: 1; }
+  .status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .status.connected { color: #4ade80; }
+  .status.disconnected { color: #f87171; }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-danger);
-  flex-shrink: 0;
-  transition: background var(--transition-normal);
-}
-.status-dot.connected {
-  background: #4ade80;
-  box-shadow: 0 0 6px rgba(74,222,128,0.4);
-  animation: status-pulse 3s ease-in-out infinite;
-}
-
-@keyframes status-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(74,222,128,0.2); }
-  50% { box-shadow: 0 0 6px rgba(74,222,128,0.5); }
-}
+  .mode-hint {
+    font-size: 11px;
+    color: #555;
+    white-space: nowrap;
+  }
 
   /* --- Keyboard shortcuts overlay --- */
   .shortcuts-overlay {
-    display: flex;
-    visibility: hidden;
+    display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(0,0,0,0.8);
     z-index: 100;
     align-items: center;
     justify-content: center;
-    opacity: 0;
-    transition: opacity var(--transition-normal), visibility 0s var(--transition-normal);
   }
-  .shortcuts-overlay.open {
-    visibility: visible;
-    opacity: 1;
-    transition: opacity var(--transition-normal), visibility 0s 0s;
-  }
-
+  .shortcuts-overlay.open { display: flex; }
   .shortcuts-box {
-    background: var(--surface-2);
-    backdrop-filter: var(--glass-blur-lg);
-    -webkit-backdrop-filter: var(--glass-blur-lg);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-xl);
-    padding: 28px 36px;
-    max-width: 520px;
-    width: 90%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 24px 32px;
+    max-width: 500px;
     font-size: 13px;
     line-height: 2;
-    color: var(--text-primary);
-    box-shadow: 0 16px 64px rgba(0,0,0,0.4);
-    transform: scale(0.95);
-    transition: transform var(--transition-normal);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   }
-  .shortcuts-overlay.open .shortcuts-box {
-    transform: scale(1);
-  }
-
-  .shortcuts-box h3 {
-    margin-bottom: 16px;
-    color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 600;
-  }
-
-  .shortcuts-section {
-    margin-bottom: 16px;
-  }
-  .shortcuts-section-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-    font-weight: 600;
-  }
-
-  .shortcuts-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 24px;
-  }
-
+  .shortcuts-box h3 { margin-bottom: 8px; color: #fff; }
   .shortcuts-box kbd {
-    background: var(--surface-3);
-    border: 1px solid var(--border-medium);
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
+    background: #333;
+    padding: 2px 6px;
+    border-radius: 4px;
     font-size: 12px;
-    color: var(--text-primary);
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    color: #e0e0e0;
   }
-  .shortcuts-box kbd.accent { color: #60a5fa; }
 
   @keyframes flash {
-    0% {
-      border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-      box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 25%, transparent);
-    }
-    100% {
-      border-color: var(--border-subtle);
-      box-shadow: none;
-    }
-  }
-
-  /* --- Custom scrollbars --- */
-  .term-container ::-webkit-scrollbar { width: 6px; }
-  .term-container ::-webkit-scrollbar-track { background: transparent; }
-  .term-container ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--accent) 25%, transparent);
-    border-radius: 3px;
-  }
-  .term-container ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--accent) 40%, transparent);
+    0% { border-color: var(--accent); box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent); }
+    100% { border-color: transparent; box-shadow: none; }
   }
 </style>
 </head>
@@ -567,10 +347,8 @@ body {
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
       <div class="shell-status">
-        <span class="shell-review-badge" id="review-0">REVIEW</span>
-        <span class="shell-toast" id="toast-0">auto-approved</span>
-        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">&#x1F399;</button>
-        <span class="shell-focus-dot" id="focus-0"></span>
+        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">MIC</button>
+        <span class="shell-focus-hint">focused</span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-health" id="health-0"></span>
       </div>
@@ -591,10 +369,8 @@ body {
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
       <div class="shell-status">
-        <span class="shell-review-badge" id="review-1">REVIEW</span>
-        <span class="shell-toast" id="toast-1">auto-approved</span>
-        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">&#x1F399;</button>
-        <span class="shell-focus-dot" id="focus-1"></span>
+        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">MIC</button>
+        <span class="shell-focus-hint">focused</span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-health" id="health-1"></span>
       </div>
@@ -615,10 +391,8 @@ body {
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
       <div class="shell-status">
-        <span class="shell-review-badge" id="review-2">REVIEW</span>
-        <span class="shell-toast" id="toast-2">auto-approved</span>
-        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">&#x1F399;</button>
-        <span class="shell-focus-dot" id="focus-2"></span>
+        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">MIC</button>
+        <span class="shell-focus-hint">focused</span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-health" id="health-2"></span>
       </div>
@@ -637,10 +411,8 @@ body {
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
       <div class="shell-status">
-        <span class="shell-review-badge" id="review-3">REVIEW</span>
-        <span class="shell-toast" id="toast-3">auto-approved</span>
-        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">&#x1F399;</button>
-        <span class="shell-focus-dot" id="focus-3"></span>
+        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">MIC</button>
+        <span class="shell-focus-hint">focused</span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-health" id="health-3"></span>
       </div>
@@ -656,55 +428,41 @@ body {
 </div>
 
 <div class="input-bar">
-  <span class="mode-hint" id="mode-hint"></span>
-  <div class="input-wrapper">
-    <div class="input-pill" id="input-pill"></div>
-    <input type="text" id="input" placeholder="Type 1-4 to target, * for all, ? for help">
+  <div class="input-preview">
+    <div class="preview-target" id="preview-target">-</div>
+    <span class="preview-arrow">&rarr;</span>
+    <span class="preview-cmd" id="preview-cmd">...</span>
   </div>
+  <input type="text" id="input" placeholder="1-4 = target, * = all.  Click pane to type direct.  Esc = bar.  ? = keys">
+  <span class="mode-hint" id="mode-hint">bar mode</span>
   <div class="bar-buttons">
-    <button class="btn-icon" id="btn-layout" title="Toggle layout">&#9638;</button>
-    <button class="btn-icon" id="btn-clear" title="Clear all terminals">&#8999;</button>
-    <button class="btn-icon btn-exit" id="btn-exit" title="Exit all instances">&#9211;</button>
+    <button class="btn btn-layout" id="btn-layout" title="Toggle layout">2x2</button>
+    <button class="btn btn-clear" id="btn-clear" title="Clear all terminals">Clear</button>
+    <button class="btn btn-exit" id="btn-exit">Exit All</button>
   </div>
-  <div class="status-dot" id="status-dot" title="disconnected"></div>
+  <span class="status disconnected" id="status">disconnected</span>
 </div>
 
 <!-- Keyboard shortcuts overlay -->
 <div class="shortcuts-overlay" id="shortcuts">
   <div class="shortcuts-box">
     <h3>Keyboard Shortcuts</h3>
-
-    <div class="shortcuts-section">
-      <div class="shortcuts-section-title">Navigation</div>
-      <div class="shortcuts-grid">
-        <div><kbd>Esc</kbd> Return to command bar</div>
-        <div><kbd class="accent">Ctrl</kbd>+<kbd>1</kbd>-<kbd>4</kbd> Focus pane</div>
-      </div>
-    </div>
-
-    <div class="shortcuts-section">
-      <div class="shortcuts-section-title">Actions</div>
-      <div class="shortcuts-grid">
-        <div><kbd class="accent">Ctrl</kbd>+<kbd>F</kbd> Search in pane</div>
-        <div><kbd class="accent">Ctrl</kbd>+<kbd>L</kbd> Clear pane</div>
-        <div><kbd class="accent">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> Toggle layout</div>
-        <div><kbd>?</kbd> This help</div>
-      </div>
-    </div>
-
-    <div class="shortcuts-section">
-      <div class="shortcuts-section-title">Command Bar</div>
-      <div class="shortcuts-grid">
-        <div><kbd>1</kbd>-<kbd>4</kbd> prefix = target pane</div>
-        <div><kbd>*</kbd> prefix = all panes</div>
-        <div>Single char = raw keypress</div>
-        <div>Multi-char = command + Enter</div>
-      </div>
-    </div>
-
-    <div style="margin-top: 8px; color: var(--text-muted); font-size: 12px;">
-      Click pane title to rename &middot; Click backdrop to close
-    </div>
+    <kbd>Esc</kbd> Return to input bar<br>
+    <kbd>Ctrl+1</kbd>-<kbd>4</kbd> Focus pane directly<br>
+    <kbd>Ctrl+F</kbd> Search in focused pane<br>
+    <kbd>Ctrl+L</kbd> Clear focused pane<br>
+    <kbd>Ctrl+Shift+L</kbd> Toggle layout<br>
+    <kbd>?</kbd> (in bar) Show this help<br>
+    <br>
+    <b>Input bar:</b><br>
+    <kbd>1</kbd>-<kbd>4</kbd> prefix = target pane<br>
+    <kbd>*</kbd> prefix = all panes<br>
+    Single char after prefix = raw keypress<br>
+    Multi-char = command + Enter<br>
+    <br>
+    <i style="color:#666">Click any pane title to rename it</i><br>
+    <br>
+    <button class="btn btn-clear" onclick="document.getElementById('shortcuts').classList.remove('open')">Close</button>
   </div>
 </div>
 
@@ -716,8 +474,9 @@ const WS_URL = `ws://${location.host}`;
 const colors = { 0: '#4ade80', 1: '#60a5fa', 2: '#facc15', 3: '#c084fc' };
 const shellEls = [0,1,2,3].map(i => document.getElementById(`shell-${i}`));
 const inputEl = document.getElementById('input');
-const statusDot = document.getElementById('status-dot');
-const inputPill = document.getElementById('input-pill');
+const statusEl = document.getElementById('status');
+const previewTarget = document.getElementById('preview-target');
+const previewCmd = document.getElementById('preview-cmd');
 const modeHint = document.getElementById('mode-hint');
 const btnExit = document.getElementById('btn-exit');
 const btnClear = document.getElementById('btn-clear');
@@ -742,14 +501,7 @@ for (let i = 0; i < 4; i++) {
   const term = new Terminal({
     fontSize: 12,
     fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-    theme: {
-      background: 'rgba(0,0,0,0)',
-      foreground: '#e2e8f0',
-      cursor: '#e2e8f0',
-      cursorAccent: '#0a0e17',
-      selectionBackground: 'rgba(255,255,255,0.15)',
-      selectionForeground: '#ffffff',
-    },
+    theme: { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0' },
     cursorBlink: false,
     scrollback: 10000,
     convertEol: true,
@@ -813,21 +565,11 @@ function setActiveShell(idx) {
     terms[idx].focus();
     modeHint.textContent = `Claude ${idx + 1} focused`;
     modeHint.style.color = colors[idx];
-    modeHint.classList.add('visible');
-    clearTimeout(modeHint._fadeTimer);
-    modeHint._fadeTimer = setTimeout(() => modeHint.classList.remove('visible'), 2000);
   } else {
     focusLocked = false;
     inputEl.focus();
-    modeHint.textContent = 'command mode';
-    modeHint.style.color = 'var(--text-muted)';
-    modeHint.classList.add('visible');
-    clearTimeout(modeHint._fadeTimer);
-    modeHint._fadeTimer = setTimeout(() => modeHint.classList.remove('visible'), 2000);
-    // Brief pulse on input bar
-    const bar = document.querySelector('.input-bar');
-    bar.style.borderColor = 'rgba(148,163,184,0.3)';
-    setTimeout(() => { bar.style.borderColor = ''; }, 300);
+    modeHint.textContent = 'bar mode';
+    modeHint.style.color = '#555';
   }
 }
 
@@ -859,7 +601,7 @@ function setLayout(idx) {
     document.getElementById('gutter-row').style.display = 'none';
     shellEls.forEach((el, i) => { el.style.gridColumn = `${i+1}`; el.style.gridRow = '1'; });
   }
-  setTimeout(fitAll, 350);
+  setTimeout(fitAll, 50);
 }
 
 btnLayout.addEventListener('click', () => setLayout((currentLayout + 1) % layouts.length));
@@ -892,13 +634,6 @@ document.addEventListener('mouseup', () => {
     gutterRow.classList.remove('dragging');
     dragging = null;
     setTimeout(fitAll, 50);
-  }
-});
-
-// --- Shortcuts overlay backdrop click to close ---
-document.getElementById('shortcuts').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) {
-    e.currentTarget.classList.remove('open');
   }
 });
 
@@ -961,8 +696,8 @@ function connect() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    statusDot.classList.add('connected');
-    statusDot.title = 'connected';
+    statusEl.textContent = 'connected';
+    statusEl.className = 'status connected';
     const cols = terms[0].cols;
     const rows = terms[0].rows;
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));
@@ -970,8 +705,8 @@ function connect() {
   };
 
   ws.onclose = () => {
-    statusDot.classList.remove('connected');
-    statusDot.title = 'disconnected';
+    statusEl.textContent = 'disconnected';
+    statusEl.className = 'status disconnected';
     setTimeout(connect, 2000);
   };
 
@@ -1050,22 +785,9 @@ function connect() {
               focusLocked = true;
               shellEls[data.shell].style.borderColor = '#f87171';
               setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
-              // Show review badge
-              const badge = document.getElementById(`review-${data.shell}`);
-              badge.classList.add('visible');
-              // Clear badge when user interacts with this pane
-              const clearBadge = () => {
-                badge.classList.remove('visible');
-                shellEls[data.shell].removeEventListener('click', clearBadge);
-              };
-              shellEls[data.shell].addEventListener('click', clearBadge);
             } else {
               // Safe - auto-approve
               ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: true }));
-              // Show toast
-              const toast = document.getElementById(`toast-${data.shell}`);
-              toast.classList.add('visible');
-              setTimeout(() => toast.classList.remove('visible'), 1500);
             }
           }
           approvalBuffers[data.shell] = '';
@@ -1106,19 +828,18 @@ setInterval(() => {
 inputEl.addEventListener('input', () => {
   const val = inputEl.value;
   if (val.length > 0 && val[0] === '*') {
-    inputPill.style.background = '#fff';
-    inputPill.textContent = 'ALL';
-    inputPill.classList.add('visible');
-    inputEl.classList.add('has-target');
+    previewTarget.style.background = '#fff';
+    previewTarget.textContent = '*';
+    previewCmd.textContent = val.slice(1) || '...';
   } else if (val.length > 0 && '1234'.includes(val[0])) {
     const idx = parseInt(val[0]) - 1;
-    inputPill.style.background = colors[idx];
-    inputPill.textContent = val[0];
-    inputPill.classList.add('visible');
-    inputEl.classList.add('has-target');
+    previewTarget.style.background = colors[idx];
+    previewTarget.textContent = val[0];
+    previewCmd.textContent = val.slice(1) || '...';
   } else {
-    inputPill.classList.remove('visible');
-    inputEl.classList.remove('has-target');
+    previewTarget.style.background = '#333';
+    previewTarget.textContent = '-';
+    previewCmd.textContent = val || '...';
   }
 });
 
@@ -1137,15 +858,15 @@ inputEl.addEventListener('keydown', (e) => {
   const isShell = '1234'.includes(val[0]);
 
   if (!isAll && !isShell) {
-    inputEl.closest('.input-bar').style.borderColor = '#f87171';
-    setTimeout(() => inputEl.closest('.input-bar').style.borderColor = '', 500);
+    inputEl.style.borderColor = '#f87171';
+    setTimeout(() => inputEl.style.borderColor = '#333', 500);
     return;
   }
 
   const cmd = val.slice(1);
   if (!cmd) {
-    inputEl.closest('.input-bar').style.borderColor = '#f87171';
-    setTimeout(() => inputEl.closest('.input-bar').style.borderColor = '', 500);
+    inputEl.style.borderColor = '#f87171';
+    setTimeout(() => inputEl.style.borderColor = '#333', 500);
     return;
   }
 
@@ -1157,25 +878,18 @@ inputEl.addEventListener('keydown', (e) => {
         if (!raw) timerStart[i] = Date.now();
         terms[i].scrollToBottom();
       }
-      for (let i = 0; i < 4; i++) {
-        shellEls[i].classList.remove('flash');
-        void shellEls[i].offsetWidth;
-        shellEls[i].classList.add('flash');
-      }
     } else {
       const idx = parseInt(val[0]) - 1;
       ws.send(JSON.stringify({ type: 'input', shell: idx, text: cmd, raw }));
       if (!raw) timerStart[idx] = Date.now();
       terms[idx].scrollToBottom();
-      shellEls[idx].classList.remove('flash');
-      void shellEls[idx].offsetWidth;
-      shellEls[idx].classList.add('flash');
     }
   }
 
   inputEl.value = '';
-  inputPill.classList.remove('visible');
-  inputEl.classList.remove('has-target');
+  previewTarget.style.background = '#333';
+  previewTarget.textContent = '-';
+  previewCmd.textContent = '...';
 });
 
 // --- Buttons ---
