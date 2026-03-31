@@ -120,6 +120,31 @@
   .shell-focus-hint { display: none; color: var(--accent); }
   .shell.active .shell-focus-hint { display: inline; }
 
+  .shell-timer {
+    font-size: 10px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+    min-width: 44px;
+    text-align: right;
+  }
+  .shell-timer.running { color: var(--accent); }
+
+  .btn-voice {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #aaa;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: all 0.15s;
+  }
+  .btn-voice:hover { border-color: var(--accent); color: var(--accent); background: #2a2a2a; }
+  .btn-voice.voice-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
   .shell-search {
     display: none;
     padding: 4px 8px;
@@ -290,7 +315,9 @@
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
       <div class="shell-status">
+        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">MIC</button>
         <span class="shell-focus-hint">focused</span>
+        <span class="shell-timer" id="timer-0"></span>
         <span class="shell-health" id="health-0"></span>
       </div>
     </div>
@@ -310,7 +337,9 @@
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
       <div class="shell-status">
+        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">MIC</button>
         <span class="shell-focus-hint">focused</span>
+        <span class="shell-timer" id="timer-1"></span>
         <span class="shell-health" id="health-1"></span>
       </div>
     </div>
@@ -330,7 +359,9 @@
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
       <div class="shell-status">
+        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">MIC</button>
         <span class="shell-focus-hint">focused</span>
+        <span class="shell-timer" id="timer-2"></span>
         <span class="shell-health" id="health-2"></span>
       </div>
     </div>
@@ -348,7 +379,9 @@
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
       <div class="shell-status">
+        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">MIC</button>
         <span class="shell-focus-hint">focused</span>
+        <span class="shell-timer" id="timer-3"></span>
         <span class="shell-health" id="health-3"></span>
       </div>
     </div>
@@ -420,6 +453,7 @@ const grid = document.getElementById('grid');
 const shortcutsOverlay = document.getElementById('shortcuts');
 
 let activeShell = -1;
+let focusLocked = false;
 let shellAlive = [true, true, true, true];
 const layouts = ['2x2', '1x4', '4x1'];
 let currentLayout = 0;
@@ -451,12 +485,14 @@ for (let i = 0; i < 4; i++) {
   term.onData((data) => {
     if (activeShell === i && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', shell: i, text: data, raw: true }));
+      if (data.includes('\r') || data.includes('\n')) timerStart[i] = Date.now();
       if (typeof recentOutput !== 'undefined') recentOutput[i] = '';
     }
   });
 
   shellEls[i].addEventListener('click', (e) => {
     if (e.target.classList.contains('shell-title') || e.target.closest('.shell-search')) return;
+    focusLocked = true;
     setActiveShell(i);
   });
 }
@@ -490,6 +526,7 @@ function toggleSearch(idx, open) {
 
 // --- Active shell management ---
 function setActiveShell(idx) {
+  if (focusLocked && idx === -1) return; // block unfocus while locked
   activeShell = idx;
   shellEls.forEach((el, i) => el.classList.toggle('active', i === idx));
   if (idx >= 0) {
@@ -497,6 +534,7 @@ function setActiveShell(idx) {
     modeHint.textContent = `Claude ${idx + 1} focused`;
     modeHint.style.color = colors[idx];
   } else {
+    focusLocked = false;
     inputEl.focus();
     modeHint.textContent = 'bar mode';
     modeHint.style.color = '#555';
@@ -571,7 +609,7 @@ document.addEventListener('mouseup', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (shortcutsOverlay.classList.contains('open')) { shortcutsOverlay.classList.remove('open'); return; }
-    if (activeShell >= 0) { e.preventDefault(); setActiveShell(-1); return; }
+    if (activeShell >= 0) { e.preventDefault(); focusLocked = false; setActiveShell(-1); return; }
   }
   if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '4') {
     e.preventDefault();
@@ -598,6 +636,7 @@ document.addEventListener('keydown', (e) => {
 // --- Fit ---
 function fitAll() {
   fitAddons.forEach(f => { try { f.fit(); } catch(e) {} });
+  terms.forEach(t => t.scrollToBottom());
   if (ws && ws.readyState === WebSocket.OPEN) {
     const cols = terms[0].cols;
     const rows = terms[0].rows;
@@ -640,9 +679,11 @@ function connect() {
   };
 
   let replayDone = false;
-  setTimeout(() => { replayDone = true; }, 3000);
+  setTimeout(() => { replayDone = true; terms.forEach(t => t.scrollToBottom()); }, 3000);
 
   const recentOutput = ['', '', '', ''];
+  const approvalBuffers = ['', '', '', ''];
+  const approvalTimers = [null, null, null, null];
 
   function needsInput(text) {
     const patterns = [
@@ -658,27 +699,85 @@ function connect() {
     return patterns.some(p => p.test(text));
   }
 
+  function isPermissionPrompt(text) {
+    return /Allow\b/i.test(text) || /\[Y\/n\]/i.test(text) || /\(y\)/i.test(text)
+      || /\byes\b.*\bno\b/i.test(text) || /\bapprove\b/i.test(text)
+      || /Do you want to/i.test(text) || /Proceed\?/i.test(text);
+  }
+
+  function isSecurityRisk(text) {
+    const lower = text.toLowerCase();
+    // Only block truly destructive / irreversible operations
+    const dangerous = [
+      'rm -rf', 'rm -r ',                              // recursive delete
+      'drop table', 'drop database', 'truncate table', // data destruction
+      'sudo ',                                          // privilege escalation
+      'git push --force', 'git push -f',                // force push
+      'git reset --hard',                               // discard all changes
+      'npm publish',                                    // publish to registry
+      'mkfs', 'dd if=',                                 // disk-level destruction
+      'kubectl delete',                                 // k8s resource deletion
+      '> /dev/',                                        // device writes
+      'format c:', 'deltree',                           // legacy destructive
+    ];
+    return dangerous.some(p => lower.includes(p));
+  }
+
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
     if (data.type === 'output') {
       terms[data.shell].write(data.text);
+      terms[data.shell].scrollToBottom();
 
-      if (replayDone && data.shell !== activeShell) {
+      if (replayDone) {
+        // Accumulate for prompt detection
         recentOutput[data.shell] += data.text;
         if (recentOutput[data.shell].length > 500) {
           recentOutput[data.shell] = recentOutput[data.shell].slice(-500);
         }
         const clean = recentOutput[data.shell].replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+
+        // Auto-approve safe permission prompts
+        approvalBuffers[data.shell] += data.text;
+        if (approvalBuffers[data.shell].length > 1000) {
+          approvalBuffers[data.shell] = approvalBuffers[data.shell].slice(-1000);
+        }
+        clearTimeout(approvalTimers[data.shell]);
+        approvalTimers[data.shell] = setTimeout(() => {
+          const cleanApproval = approvalBuffers[data.shell].replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+          if (isPermissionPrompt(cleanApproval)) {
+            if (isSecurityRisk(cleanApproval)) {
+              // Risky - focus pane, let user decide
+              focusLocked = false;
+              setActiveShell(data.shell);
+              focusLocked = true;
+              shellEls[data.shell].style.borderColor = '#f87171';
+              setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
+            } else {
+              // Safe - auto-approve
+              ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: true }));
+            }
+          }
+          approvalBuffers[data.shell] = '';
+        }, 400);
+
+        // Stop timer when prompt detected (task finished)
         if (needsInput(clean)) {
-          setActiveShell(data.shell);
+          timerStart[data.shell] = 0;
+          if (data.shell !== activeShell) {
+            focusLocked = false;
+            setActiveShell(data.shell);
+            focusLocked = true;
+          }
           recentOutput[data.shell] = '';
         }
-      }
 
-      if (replayDone && data.shell !== activeShell) {
-        shellEls[data.shell].classList.remove('flash');
-        void shellEls[data.shell].offsetWidth;
-        shellEls[data.shell].classList.add('flash');
+        // Flash inactive panes on output
+        if (data.shell !== activeShell) {
+          shellEls[data.shell].classList.remove('flash');
+          void shellEls[data.shell].offsetWidth;
+          shellEls[data.shell].classList.add('flash');
+        }
       }
     } else if (data.type === 'health') {
       shellAlive = data.alive;
@@ -712,7 +811,7 @@ inputEl.addEventListener('input', () => {
   }
 });
 
-inputEl.addEventListener('focus', () => setActiveShell(-1));
+inputEl.addEventListener('focus', () => { if (!focusLocked) setActiveShell(-1); });
 
 inputEl.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
@@ -744,11 +843,13 @@ inputEl.addEventListener('keydown', (e) => {
     if (isAll) {
       for (let i = 0; i < 4; i++) {
         ws.send(JSON.stringify({ type: 'input', shell: i, text: cmd, raw }));
+        if (!raw) timerStart[i] = Date.now();
         terms[i].scrollToBottom();
       }
     } else {
       const idx = parseInt(val[0]) - 1;
       ws.send(JSON.stringify({ type: 'input', shell: idx, text: cmd, raw }));
+      if (!raw) timerStart[idx] = Date.now();
       terms[idx].scrollToBottom();
     }
   }
@@ -781,6 +882,41 @@ document.querySelectorAll('.shell-title').forEach(el => {
     if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
   });
 });
+
+// --- Voice mode buttons ---
+const voiceActive = [false, false, false, false];
+document.querySelectorAll('.btn-voice').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const idx = parseInt(btn.dataset.shell);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', shell: idx, text: '/voice', raw: false }));
+      voiceActive[idx] = !voiceActive[idx];
+      btn.classList.toggle('voice-active', voiceActive[idx]);
+    }
+  });
+});
+
+// --- Runtime timers ---
+const timerStart = [0, 0, 0, 0];
+const timerEls = [0,1,2,3].map(i => document.getElementById(`timer-${i}`));
+
+function updateTimers() {
+  const now = Date.now();
+  timerEls.forEach((el, i) => {
+    if (timerStart[i] > 0) {
+      const elapsed = Math.floor((now - timerStart[i]) / 1000);
+      const min = Math.floor(elapsed / 60);
+      const sec = elapsed % 60;
+      el.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+      el.classList.add('running');
+    } else {
+      el.textContent = '';
+      el.classList.remove('running');
+    }
+  });
+}
+setInterval(updateTimers, 1000);
 
 connect();
 inputEl.focus();

@@ -64,7 +64,7 @@ def spawn_claude(claude_path, rows=24, cols=80):
         # Child process
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
-        os.execv(claude_path, [claude_path, "--dangerously-skip-permissions"])
+        os.execv(claude_path, [claude_path])
     else:
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         try:
