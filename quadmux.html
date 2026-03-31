@@ -459,29 +459,77 @@ body {
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 100;
     align-items: center;
     justify-content: center;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
   }
-  .shortcuts-overlay.open { display: flex; }
+  .shortcuts-overlay.open {
+    display: flex;
+    opacity: 1;
+  }
+
   .shortcuts-box {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 12px;
-    padding: 24px 32px;
-    max-width: 500px;
+    background: var(--surface-2);
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-xl);
+    padding: 28px 36px;
+    max-width: 520px;
+    width: 90%;
     font-size: 13px;
     line-height: 2;
+    color: var(--text-primary);
+    box-shadow: 0 16px 64px rgba(0,0,0,0.4);
+    transform: scale(0.95);
+    transition: transform var(--transition-normal);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   }
-  .shortcuts-box h3 { margin-bottom: 8px; color: #fff; }
+  .shortcuts-overlay.open .shortcuts-box {
+    transform: scale(1);
+  }
+
+  .shortcuts-box h3 {
+    margin-bottom: 16px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .shortcuts-section {
+    margin-bottom: 16px;
+  }
+  .shortcuts-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .shortcuts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+  }
+
   .shortcuts-box kbd {
-    background: #333;
-    padding: 2px 6px;
-    border-radius: 4px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-medium);
+    padding: 2px 8px;
+    border-radius: 5px;
     font-size: 12px;
-    color: #e0e0e0;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
   }
+  .shortcuts-box kbd.accent { color: #60a5fa; }
 
   @keyframes flash {
     0% {
@@ -620,22 +668,38 @@ body {
 <div class="shortcuts-overlay" id="shortcuts">
   <div class="shortcuts-box">
     <h3>Keyboard Shortcuts</h3>
-    <kbd>Esc</kbd> Return to input bar<br>
-    <kbd>Ctrl+1</kbd>-<kbd>4</kbd> Focus pane directly<br>
-    <kbd>Ctrl+F</kbd> Search in focused pane<br>
-    <kbd>Ctrl+L</kbd> Clear focused pane<br>
-    <kbd>Ctrl+Shift+L</kbd> Toggle layout<br>
-    <kbd>?</kbd> (in bar) Show this help<br>
-    <br>
-    <b>Input bar:</b><br>
-    <kbd>1</kbd>-<kbd>4</kbd> prefix = target pane<br>
-    <kbd>*</kbd> prefix = all panes<br>
-    Single char after prefix = raw keypress<br>
-    Multi-char = command + Enter<br>
-    <br>
-    <i style="color:#666">Click any pane title to rename it</i><br>
-    <br>
-    <button class="btn btn-clear" onclick="document.getElementById('shortcuts').classList.remove('open')">Close</button>
+
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Navigation</div>
+      <div class="shortcuts-grid">
+        <div><kbd>Esc</kbd> Return to command bar</div>
+        <div><kbd class="accent">Ctrl</kbd>+<kbd>1</kbd>-<kbd>4</kbd> Focus pane</div>
+      </div>
+    </div>
+
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Actions</div>
+      <div class="shortcuts-grid">
+        <div><kbd class="accent">Ctrl</kbd>+<kbd>F</kbd> Search in pane</div>
+        <div><kbd class="accent">Ctrl</kbd>+<kbd>L</kbd> Clear pane</div>
+        <div><kbd class="accent">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> Toggle layout</div>
+        <div><kbd>?</kbd> This help</div>
+      </div>
+    </div>
+
+    <div class="shortcuts-section">
+      <div class="shortcuts-section-title">Command Bar</div>
+      <div class="shortcuts-grid">
+        <div><kbd>1</kbd>-<kbd>4</kbd> prefix = target pane</div>
+        <div><kbd>*</kbd> prefix = all panes</div>
+        <div>Single char = raw keypress</div>
+        <div>Multi-char = command + Enter</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 8px; color: var(--text-muted); font-size: 12px;">
+      Click pane title to rename &middot; Click backdrop to close
+    </div>
   </div>
 </div>
 
@@ -812,6 +876,13 @@ document.addEventListener('mouseup', () => {
     gutterRow.classList.remove('dragging');
     dragging = null;
     setTimeout(fitAll, 50);
+  }
+});
+
+// --- Shortcuts overlay backdrop click to close ---
+document.getElementById('shortcuts').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) {
+    e.currentTarget.classList.remove('open');
   }
 });
 
