@@ -62,6 +62,7 @@ def spawn_claude(claude_path, rows=24, cols=80):
     pid, master_fd = pty.fork()
     if pid == 0:
         # Child process
+        os.environ.pop("ANTHROPIC_API_KEY", None)
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
         os.execv(claude_path, [claude_path])
@@ -116,10 +117,14 @@ def get_html_content():
     return "<html><body><h1>quadmux.html not found</h1></body></html>"
 
 
-async def http_handler(path, request_headers):
+async def http_handler(connection, request):
     """Serve the HTML UI on HTTP requests (non-WebSocket)."""
-    if "Upgrade" not in request_headers:
-        return (200, [("Content-Type", "text/html")], get_html_content().encode())
+    if request.headers.get("Upgrade", "").lower() != "websocket":
+        from websockets.http11 import Response
+        from websockets.datastructures import Headers
+        body = get_html_content().encode()
+        headers = Headers([("Content-Type", "text/html"), ("Content-Length", str(len(body)))])
+        return Response(200, "OK", headers, body)
     return None
 
 
@@ -145,18 +150,26 @@ async def handler(ws):
             pass
     try:
         async for message in ws:
-            data = json.loads(message)
-            if data["type"] == "input":
-                idx = data["shell"]
-                text = data["text"]
+            try:
+                data = json.loads(message)
+                msg_type = data.get("type")
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+            if msg_type == "input":
+                idx = data.get("shell", -1)
+                text = data.get("text", "")
                 raw = data.get("raw", False)
+                # Cap input length to 64KB
+                if len(text) > 65536:
+                    text = text[:65536]
                 if 0 <= idx < NUM_SHELLS:
                     try:
                         payload = text if raw else text + "\r"
                         os.write(masters[idx], payload.encode())
                     except OSError as e:
                         print(f"  Write error shell {idx}: {e}", flush=True)
-            elif data["type"] == "health_check":
+            elif msg_type == "health_check":
                 alive = []
                 for i, pid in enumerate(child_pids):
                     try:
@@ -165,7 +178,7 @@ async def handler(ws):
                     except OSError:
                         alive.append(False)
                 await ws.send(json.dumps({"type": "health", "alive": alive}))
-            elif data["type"] == "exit_all":
+            elif msg_type == "exit_all":
                 print("Exit all requested", flush=True)
                 for fd in masters:
                     try:
@@ -180,15 +193,24 @@ async def handler(ws):
                         pass
                 await asyncio.sleep(1)
                 os._exit(0)
-            elif data["type"] == "resize":
+            elif msg_type == "resize":
                 cols = data.get("cols", 80)
                 rows = data.get("rows", 24)
+                shell_idx = data.get("shell", None)
                 winsize = struct.pack("HHHH", rows, cols, 0, 0)
-                for fd in masters:
+                if shell_idx is not None and 0 <= shell_idx < NUM_SHELLS:
+                    # Per-pane resize
                     try:
-                        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+                        fcntl.ioctl(masters[shell_idx], termios.TIOCSWINSZ, winsize)
                     except OSError:
                         pass
+                else:
+                    # Resize all
+                    for fd in masters:
+                        try:
+                            fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+                        except OSError:
+                            pass
     except websockets.ConnectionClosed:
         pass
     finally:
