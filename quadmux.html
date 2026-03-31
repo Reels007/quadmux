@@ -380,6 +380,110 @@ body {
   .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
   .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(var(--accent-rgb), 0.3); border-radius: 3px; }
 
+  /* === PHASE 2: CONTROLS === */
+  .btn-pane {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 1px 3px;
+    border-radius: 3px;
+    transition: all var(--transition-fast);
+    line-height: 1;
+  }
+  .btn-pane:hover { color: var(--text-primary); background: var(--surface-3); }
+  .btn-pane.stop:hover { color: #f87171; }
+  .shell-last-cmd {
+    font-size: 9px;
+    color: var(--text-muted);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 1;
+  }
+  .shell.maximized { z-index: 10; }
+
+  /* Broadcast mode */
+  .input-bar.broadcast { border-color: rgba(var(--accent-rgb), 0.3); animation: broadcast-pulse 2s ease-in-out infinite; }
+  @keyframes broadcast-pulse {
+    0%, 100% { border-color: rgba(96,165,250,0.2); }
+    50% { border-color: rgba(96,165,250,0.5); }
+  }
+  .broadcast-indicator { display: none; font-size: 10px; color: #60a5fa; }
+  .input-bar.broadcast ~ .grid .broadcast-indicator,
+  .broadcast-on .broadcast-indicator { display: inline; }
+
+  /* Quick action popover */
+  .quick-actions {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface-2);
+    backdrop-filter: var(--glass-blur-md);
+    -webkit-backdrop-filter: var(--glass-blur-md);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    z-index: 50;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.3);
+  }
+  .quick-actions.open { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .quick-actions button {
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all var(--transition-fast);
+  }
+  .quick-actions button:hover { background: var(--surface-3); color: var(--text-primary); border-color: var(--border-medium); }
+
+  /* Activity log strip */
+  .activity-log {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-normal);
+    background: var(--surface-1);
+    border-radius: var(--radius-sm);
+    margin: 0 auto 4px;
+    max-width: 780px;
+    width: calc(100% - 16px);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .activity-log.open { max-height: 28px; padding: 4px 12px; }
+  .activity-log-items { display: flex; gap: 12px; overflow: hidden; white-space: nowrap; }
+  .activity-log-item { cursor: pointer; }
+  .activity-log-item:hover { color: var(--text-secondary); }
+
+  /* Session uptime */
+  .uptime { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* Status badge */
+  .status-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .status-badge.idle { color: #4ade80; background: rgba(74,222,128,0.1); }
+  .status-badge.busy { color: #fbbf24; background: rgba(251,191,36,0.1); animation: pulse-badge 1.5s ease-in-out infinite; }
+  .status-badge.waiting { color: #f87171; background: rgba(248,113,113,0.15); }
+  .status-badge.error { color: #f87171; background: rgba(248,113,113,0.2); }
+  .status-badge.disconnected { color: var(--text-muted); background: var(--surface-2); }
+  .status-badge.stale { color: #fb923c; background: rgba(251,146,60,0.1); }
+  @keyframes pulse-badge { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
   @keyframes flash {
     0% { border-color: var(--accent); box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent); }
     100% { border-color: transparent; box-shadow: none; }
@@ -390,14 +494,16 @@ body {
 
 <div class="grid" id="grid">
   <div class="shell s1" id="shell-0" style="grid-column:1;grid-row:1;">
-    <div class="shell-header">
+    <div class="shell-header" data-shell="0">
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
+      <span class="shell-last-cmd" id="lastcmd-0"></span>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <button class="btn-pane stop" data-shell="0" title="Stop (Ctrl+C)" aria-label="Stop">■</button>
+        <button class="btn-pane maximize" data-shell="0" title="Maximize" aria-label="Maximize">⛶</button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-0"></span>
-        <span class="shell-health" id="health-0"></span>
+        <span class="status-badge idle" id="status-0">idle</span>
       </div>
     </div>
     <div class="shell-search" id="search-0">
@@ -412,14 +518,16 @@ body {
   <div class="gutter-col" id="gutter-col"></div>
 
   <div class="shell s2" id="shell-1" style="grid-column:3;grid-row:1;">
-    <div class="shell-header">
+    <div class="shell-header" data-shell="1">
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
+      <span class="shell-last-cmd" id="lastcmd-1"></span>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <button class="btn-pane stop" data-shell="1" title="Stop (Ctrl+C)" aria-label="Stop">■</button>
+        <button class="btn-pane maximize" data-shell="1" title="Maximize" aria-label="Maximize">⛶</button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-1"></span>
-        <span class="shell-health" id="health-1"></span>
+        <span class="status-badge idle" id="status-1">idle</span>
       </div>
     </div>
     <div class="shell-search" id="search-1">
@@ -434,14 +542,16 @@ body {
   <div class="gutter-row" id="gutter-row"></div>
 
   <div class="shell s3" id="shell-2" style="grid-column:1;grid-row:3;">
-    <div class="shell-header">
+    <div class="shell-header" data-shell="2">
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
+      <span class="shell-last-cmd" id="lastcmd-2"></span>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <button class="btn-pane stop" data-shell="2" title="Stop (Ctrl+C)" aria-label="Stop">■</button>
+        <button class="btn-pane maximize" data-shell="2" title="Maximize" aria-label="Maximize">⛶</button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-2"></span>
-        <span class="shell-health" id="health-2"></span>
+        <span class="status-badge idle" id="status-2">idle</span>
       </div>
     </div>
     <div class="shell-search" id="search-2">
@@ -454,14 +564,16 @@ body {
   </div>
 
   <div class="shell s4" id="shell-3" style="grid-column:3;grid-row:3;">
-    <div class="shell-header">
+    <div class="shell-header" data-shell="3">
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
+      <span class="shell-last-cmd" id="lastcmd-3"></span>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <button class="btn-pane stop" data-shell="3" title="Stop (Ctrl+C)" aria-label="Stop">■</button>
+        <button class="btn-pane maximize" data-shell="3" title="Maximize" aria-label="Maximize">⛶</button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-3"></span>
-        <span class="shell-health" id="health-3"></span>
+        <span class="status-badge idle" id="status-3">idle</span>
       </div>
     </div>
     <div class="shell-search" id="search-3">
@@ -474,20 +586,36 @@ body {
   </div>
 </div>
 
-<div class="input-bar">
+<div class="activity-log" id="activity-log">
+  <div class="activity-log-items" id="activity-log-items"></div>
+</div>
+
+<div class="input-bar" id="input-bar" style="position:relative;">
   <div class="input-preview">
     <div class="preview-target" id="preview-target">-</div>
     <span class="preview-arrow">&rarr;</span>
     <span class="preview-cmd" id="preview-cmd">...</span>
   </div>
-  <input type="text" id="input" placeholder="1-4 = target, * = all.  Click pane to type direct.  Esc = bar.  ? = keys">
+  <input type="text" id="input" placeholder="1-4 = target, * = all.  ? = keys">
   <span class="mode-hint" id="mode-hint">bar mode</span>
+  <span class="uptime" id="uptime"></span>
   <div class="bar-buttons">
+    <button class="btn-icon" id="btn-broadcast" title="Broadcast mode (Ctrl+B)" aria-label="Broadcast">⊕</button>
+    <button class="btn-icon" id="btn-quick" title="Quick actions" aria-label="Quick actions">⚡</button>
+    <button class="btn-icon" id="btn-log" title="Activity log (Ctrl+;)" aria-label="Activity log">☰</button>
     <button class="btn-icon" id="btn-layout" title="Toggle layout" aria-label="Toggle layout">⊞</button>
     <button class="btn-icon" id="btn-clear" title="Clear all terminals" aria-label="Clear all">⌫</button>
     <button class="btn-icon danger" id="btn-exit" title="Exit all instances" aria-label="Exit all">⏻</button>
   </div>
   <span class="status-dot disconnected" id="status" title="disconnected"></span>
+  <div class="quick-actions" id="quick-actions" role="menu">
+    <button data-action="ctrlc" aria-label="Send Ctrl+C">⬛ Ctrl+C</button>
+    <button data-action="approve" aria-label="Approve">✓ Approve (y)</button>
+    <button data-action="help" aria-label="Send /help">❓ /help</button>
+    <button data-action="status" aria-label="Send /status">📊 /status</button>
+    <button data-action="compact" aria-label="Send /compact">📦 /compact</button>
+    <button data-action="cost" aria-label="Send /cost">💰 /cost</button>
+  </div>
 </div>
 
 <!-- Keyboard shortcuts overlay -->
@@ -569,7 +697,10 @@ for (let i = 0; i < 4; i++) {
   term.onData((data) => {
     if (activeShell === i && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', shell: i, text: data, raw: true }));
-      if (data.includes('\r') || data.includes('\n')) timerStart[i] = Date.now();
+      if (data.includes('\r') || data.includes('\n')) {
+        timerStart[i] = Date.now();
+        updatePaneStatus(i, 'busy');
+      }
       if (typeof recentOutput !== 'undefined') recentOutput[i] = '';
     }
   });
@@ -719,6 +850,30 @@ document.addEventListener('keydown', (e) => {
     setLayout((currentLayout + 1) % layouts.length);
     return;
   }
+  // Ctrl+Shift+1-4: maximize pane
+  if (e.ctrlKey && e.shiftKey && e.key >= '1' && e.key <= '4') {
+    e.preventDefault();
+    toggleMaximize(parseInt(e.key) - 1);
+    return;
+  }
+  // Ctrl+B: broadcast
+  if (e.ctrlKey && !e.shiftKey && e.key === 'b' && document.activeElement !== inputEl) {
+    e.preventDefault();
+    btnBroadcast.click();
+    return;
+  }
+  // Ctrl+;: activity log
+  if (e.ctrlKey && e.key === ';') {
+    e.preventDefault();
+    activityLog.classList.toggle('open');
+    return;
+  }
+  // Ctrl+Arrow: spatial nav
+  if (e.ctrlKey && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && activeShell >= 0) {
+    e.preventDefault();
+    spatialNav(e.key);
+    return;
+  }
 });
 
 // --- Fit ---
@@ -739,9 +894,12 @@ setTimeout(fitAll, 1000);
 // --- Health check ---
 function updateHealth() {
   shellAlive.forEach((alive, i) => {
-    const dot = document.getElementById(`health-${i}`);
-    dot.classList.toggle('dead', !alive);
     shellEls[i].classList.toggle('dead', !alive);
+    if (!alive && paneStatus[i] !== 'disconnected') {
+      updatePaneStatus(i, 'disconnected');
+    } else if (alive && paneStatus[i] === 'disconnected') {
+      updatePaneStatus(i, 'idle');
+    }
   });
 }
 
@@ -852,6 +1010,7 @@ function connect() {
         // Stop timer when prompt detected (task finished)
         if (needsInput(clean)) {
           timerStart[data.shell] = 0;
+          updatePaneStatus(data.shell, 'waiting');
           if (data.shell !== activeShell) {
             focusLocked = false;
             setActiveShell(data.shell);
@@ -910,19 +1069,28 @@ inputEl.addEventListener('keydown', (e) => {
 
   if (val === '?') { shortcutsOverlay.classList.add('open'); inputEl.value = ''; return; }
 
-  const isAll = val[0] === '*';
-  const isShell = '1234'.includes(val[0]);
+  let isAll = val[0] === '*';
+  let isShell = '1234'.includes(val[0]);
+  let cmd, targetLabel;
 
-  if (!isAll && !isShell) {
-    inputEl.style.borderColor = '#f87171';
-    setTimeout(() => inputEl.style.borderColor = '#333', 500);
-    return;
+  // Broadcast mode: treat all input as broadcast unless explicitly targeted
+  if (broadcastMode && !isAll && !isShell) {
+    isAll = true;
+    cmd = val;
+    targetLabel = '*';
+  } else {
+    if (!isAll && !isShell) {
+      inputEl.style.borderColor = '#f87171';
+      setTimeout(() => inputEl.style.borderColor = '', 500);
+      return;
+    }
+    cmd = val.slice(1);
+    targetLabel = isAll ? '*' : val[0];
   }
 
-  const cmd = val.slice(1);
   if (!cmd) {
     inputEl.style.borderColor = '#f87171';
-    setTimeout(() => inputEl.style.borderColor = '#333', 500);
+    setTimeout(() => inputEl.style.borderColor = '', 500);
     return;
   }
 
@@ -931,15 +1099,16 @@ inputEl.addEventListener('keydown', (e) => {
     if (isAll) {
       for (let i = 0; i < 4; i++) {
         ws.send(JSON.stringify({ type: 'input', shell: i, text: cmd, raw }));
-        if (!raw) timerStart[i] = Date.now();
+        if (!raw) { timerStart[i] = Date.now(); updatePaneStatus(i, 'busy'); lastCommands[i] = cmd; lastCmdEls[i].textContent = cmd.slice(0,30); }
         terms[i].scrollToBottom();
       }
     } else {
       const idx = parseInt(val[0]) - 1;
       ws.send(JSON.stringify({ type: 'input', shell: idx, text: cmd, raw }));
-      if (!raw) timerStart[idx] = Date.now();
+      if (!raw) { timerStart[idx] = Date.now(); updatePaneStatus(idx, 'busy'); lastCommands[idx] = cmd; lastCmdEls[idx].textContent = cmd.slice(0,30); }
       terms[idx].scrollToBottom();
     }
+    if (!raw) addToHistory(targetLabel, cmd);
   }
 
   inputEl.value = '';
@@ -1010,6 +1179,220 @@ setInterval(updateTimers, 1000);
 shortcutsOverlay.addEventListener('click', (e) => {
   if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
 });
+
+// === PHASE 2: CONTROLS ===
+
+// --- State ---
+let broadcastMode = false;
+let maximizedPane = -1;
+const commandHistory = [];
+const lastCommands = ['', '', '', ''];
+const paneStatus = ['idle', 'idle', 'idle', 'idle'];
+const statusEls = [0,1,2,3].map(i => document.getElementById(`status-${i}`));
+const lastCmdEls = [0,1,2,3].map(i => document.getElementById(`lastcmd-${i}`));
+const staleTimers = [0, 0, 0, 0];
+const STALE_TIMEOUT = 5 * 60 * 1000;
+const inputBar = document.getElementById('input-bar');
+const sessionStart = Date.now();
+
+// --- Per-pane stop button ---
+document.querySelectorAll('.btn-pane.stop').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const idx = parseInt(btn.dataset.shell);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', shell: idx, text: '\x03', raw: true }));
+    }
+  });
+});
+
+// --- Maximize/restore ---
+function toggleMaximize(idx) {
+  if (maximizedPane === idx) {
+    maximizedPane = -1;
+    shellEls.forEach(el => { el.style.display = ''; el.classList.remove('maximized'); });
+    document.getElementById('gutter-col').style.display = '';
+    document.getElementById('gutter-row').style.display = '';
+    setLayout(currentLayout);
+  } else {
+    if (maximizedPane >= 0) {
+      shellEls.forEach(el => { el.style.display = ''; el.classList.remove('maximized'); });
+    }
+    maximizedPane = idx;
+    shellEls.forEach((el, i) => {
+      if (i === idx) {
+        el.style.display = '';
+        el.style.gridColumn = '1 / -1';
+        el.style.gridRow = '1 / -1';
+        el.classList.add('maximized');
+      } else {
+        el.style.display = 'none';
+      }
+    });
+    document.getElementById('gutter-col').style.display = 'none';
+    document.getElementById('gutter-row').style.display = 'none';
+  }
+  setTimeout(fitAll, 100);
+}
+
+document.querySelectorAll('.btn-pane.maximize').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMaximize(parseInt(btn.dataset.shell));
+  });
+});
+
+// Double-click header to maximize
+document.querySelectorAll('.shell-header').forEach(header => {
+  header.addEventListener('dblclick', (e) => {
+    if (e.target.classList.contains('shell-title')) return;
+    toggleMaximize(parseInt(header.dataset.shell));
+  });
+});
+
+// --- Broadcast mode ---
+const btnBroadcast = document.getElementById('btn-broadcast');
+btnBroadcast.addEventListener('click', () => {
+  broadcastMode = !broadcastMode;
+  inputBar.classList.toggle('broadcast', broadcastMode);
+  btnBroadcast.style.color = broadcastMode ? '#60a5fa' : '';
+});
+
+// --- Quick actions popover ---
+const quickActions = document.getElementById('quick-actions');
+const btnQuick = document.getElementById('btn-quick');
+btnQuick.addEventListener('click', () => quickActions.classList.toggle('open'));
+
+document.addEventListener('click', (e) => {
+  if (!quickActions.contains(e.target) && e.target !== btnQuick) {
+    quickActions.classList.remove('open');
+  }
+});
+
+quickActions.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const action = btn.dataset.action;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const targets = (broadcastMode || activeShell < 0) ? [0,1,2,3] : [activeShell];
+    const actionMap = {
+      ctrlc: { text: '\x03', raw: true },
+      approve: { text: 'y', raw: true },
+      help: { text: '/help', raw: false },
+      status: { text: '/status', raw: false },
+      compact: { text: '/compact', raw: false },
+      cost: { text: '/cost', raw: false },
+    };
+    const cmd = actionMap[action];
+    if (cmd) {
+      targets.forEach(i => {
+        ws.send(JSON.stringify({ type: 'input', shell: i, text: cmd.text, raw: cmd.raw }));
+      });
+    }
+    quickActions.classList.remove('open');
+  });
+});
+
+// --- Activity log ---
+const activityLog = document.getElementById('activity-log');
+const activityLogItems = document.getElementById('activity-log-items');
+const btnLog = document.getElementById('btn-log');
+btnLog.addEventListener('click', () => activityLog.classList.toggle('open'));
+
+function addToHistory(target, cmd) {
+  const label = target === '*' ? '*' : target;
+  commandHistory.push({ target: label, cmd, ts: Date.now() });
+  if (commandHistory.length > 50) commandHistory.shift();
+  renderActivityLog();
+}
+
+function renderActivityLog() {
+  const recent = commandHistory.slice(-5);
+  activityLogItems.textContent = '';
+  recent.forEach(h => {
+    const span = document.createElement('span');
+    span.className = 'activity-log-item';
+    span.title = h.cmd;
+    const display = h.cmd.length > 25 ? h.cmd.slice(0,25) + '...' : h.cmd;
+    span.textContent = `[${h.target}] ${display}`;
+    activityLogItems.appendChild(span);
+  });
+}
+
+// --- Export pane output ---
+function exportPane(idx) {
+  const buf = terms[idx].buffer.active;
+  let text = '';
+  for (let i = 0; i < buf.length; i++) {
+    const line = buf.getLine(i);
+    if (line) text += line.translateToString(true) + '\n';
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    const el = lastCmdEls[idx];
+    const prev = el.textContent;
+    el.textContent = 'Copied!';
+    setTimeout(() => { el.textContent = prev; }, 1500);
+  }).catch(() => {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quadmux-pane-${idx+1}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+// === PHASE 3: STATUS & INFO ===
+
+function updatePaneStatus(idx, newStatus) {
+  paneStatus[idx] = newStatus;
+  const el = statusEls[idx];
+  el.className = 'status-badge ' + newStatus;
+  el.textContent = newStatus;
+  if (newStatus === 'busy') {
+    staleTimers[idx] = Date.now();
+  } else {
+    staleTimers[idx] = 0;
+  }
+}
+
+setInterval(() => {
+  paneStatus.forEach((status, i) => {
+    if (status === 'busy' && staleTimers[i] > 0 && (Date.now() - staleTimers[i]) > STALE_TIMEOUT) {
+      updatePaneStatus(i, 'stale');
+    }
+  });
+}, 30000);
+
+const uptimeEl = document.getElementById('uptime');
+function updateUptime() {
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  uptimeEl.textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+setInterval(updateUptime, 60000);
+updateUptime();
+
+// === PHASE 4: LAYOUT & NAV ===
+
+const origSetLayout = setLayout;
+setLayout = function(idx) {
+  if (maximizedPane >= 0) {
+    maximizedPane = -1;
+    shellEls.forEach(el => { el.style.display = ''; el.classList.remove('maximized'); });
+    document.getElementById('gutter-col').style.display = '';
+    document.getElementById('gutter-row').style.display = '';
+  }
+  origSetLayout(idx);
+};
+
+function spatialNav(dir) {
+  if (activeShell < 0) return;
+  const map2x2 = { ArrowUp: [null,null,0,1], ArrowDown: [2,3,null,null], ArrowLeft: [null,0,null,2], ArrowRight: [1,null,3,null] };
+  const next = map2x2[dir]?.[activeShell];
+  if (next != null) { focusLocked = true; setActiveShell(next); }
+}
 
 connect();
 inputEl.focus();
