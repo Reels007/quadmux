@@ -107,117 +107,178 @@ body {
     transition: opacity 500ms ease;
   }
 
-  .shell-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    background: #1a1a1a;
-    font-size: 12px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
+.shell-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  backdrop-filter: var(--glass-blur-md);
+  -webkit-backdrop-filter: var(--glass-blur-md);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+  position: relative;
+  border-bottom: 1px solid var(--border-subtle);
+}
 
-  .shell-number {
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    color: #0a0a0a;
-    background: var(--accent);
-    flex-shrink: 0;
-  }
+/* Health line along top of header */
+.shell-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: background var(--transition-slow);
+}
+.shell.dead .shell-header::before {
+  background: #f87171;
+  animation: health-pulse 2s ease-in-out infinite;
+}
 
-  .shell-title {
-    color: var(--accent);
-    cursor: text;
-    padding: 1px 4px;
-    border-radius: 3px;
-    border: 1px solid transparent;
-    min-width: 40px;
-    outline: none;
-  }
-  .shell-title:hover { border-color: #333; }
-  .shell-title:focus { border-color: var(--accent); background: #0a0a0a; }
+/* Active pane bottom accent line */
+.shell.active .shell-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
 
-  .shell-status {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    color: #555;
-  }
+@keyframes health-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
 
-  .shell-health {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #4ade80;
-  }
-  .shell-health.dead { background: #f87171; }
+.shell-number {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--bg-base);
+  background: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(0,0,0,0.3);
+  flex-shrink: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
 
-  .shell-focus-hint { display: none; color: var(--accent); }
-  .shell.active .shell-focus-hint { display: inline; }
+.shell-title {
+  color: var(--text-primary);
+  cursor: text;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border-bottom: 1px solid transparent;
+  min-width: 40px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.shell-title:hover { border-bottom-color: var(--text-muted); }
+.shell-title:focus { border-bottom-color: var(--accent); }
 
-  .shell-timer {
-    font-size: 10px;
-    color: #666;
-    font-variant-numeric: tabular-nums;
-    min-width: 44px;
-    text-align: right;
-  }
-  .shell-timer.running { color: var(--accent); }
+.shell-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 
-  .btn-voice {
-    background: #222;
-    border: 1px solid #444;
-    border-radius: 4px;
-    color: #aaa;
-    cursor: pointer;
-    padding: 2px 6px;
-    font-size: 11px;
-    font-family: inherit;
-    font-weight: 600;
-    line-height: 1.2;
-    transition: all 0.15s;
-  }
-  .btn-voice:hover { border-color: var(--accent); color: var(--accent); background: #2a2a2a; }
-  .btn-voice.voice-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+/* Health dot hidden -- using header ::before line instead */
+.shell-health { display: none; }
 
-  .shell-search {
-    display: none;
-    padding: 4px 8px;
-    background: #1a1a1a;
-    border-top: 1px solid #222;
-  }
-  .shell-search.open { display: flex; gap: 4px; align-items: center; }
-  .shell-search input {
-    flex: 1;
-    background: #0a0a0a;
-    border: 1px solid #333;
-    border-radius: 4px;
-    padding: 3px 6px;
-    color: #e0e0e0;
-    font-family: inherit;
-    font-size: 11px;
-    outline: none;
-  }
-  .shell-search button {
-    background: #333;
-    border: none;
-    color: #ccc;
-    border-radius: 4px;
-    padding: 3px 8px;
-    font-size: 11px;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .shell-search button:hover { background: #444; }
+/* Focus dot replaces "focused" text */
+.shell-focus-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  display: none;
+}
+.shell.active .shell-focus-dot { display: block; }
+
+.shell-focus-hint { display: none; }
+
+.shell-timer {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 44px;
+  text-align: right;
+}
+.shell-timer.running {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.btn-voice {
+  background: var(--surface-2);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  transition: all var(--transition-fast);
+}
+.btn-voice:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--accent);
+  background: var(--surface-3);
+}
+.btn-voice.voice-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.shell-search {
+  display: none;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+.shell-search.open { display: flex; gap: 6px; align-items: center; }
+.shell-search input {
+  flex: 1;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.shell-search input:focus { border-color: var(--accent); }
+.shell-search button {
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  transition: all var(--transition-fast);
+}
+.shell-search button:hover { background: var(--surface-3); color: var(--text-primary); border-color: var(--border-medium); }
 
   .s1 { --accent: #4ade80; }
   .s2 { --accent: #60a5fa; }
@@ -376,8 +437,8 @@ body {
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">&#x1F399;</button>
+        <span class="shell-focus-dot" id="focus-0"></span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-health" id="health-0"></span>
       </div>
@@ -398,8 +459,8 @@ body {
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">&#x1F399;</button>
+        <span class="shell-focus-dot" id="focus-1"></span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-health" id="health-1"></span>
       </div>
@@ -420,8 +481,8 @@ body {
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">&#x1F399;</button>
+        <span class="shell-focus-dot" id="focus-2"></span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-health" id="health-2"></span>
       </div>
@@ -440,8 +501,8 @@ body {
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">&#x1F399;</button>
+        <span class="shell-focus-dot" id="focus-3"></span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-health" id="health-3"></span>
       </div>
