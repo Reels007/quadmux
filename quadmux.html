@@ -740,7 +740,14 @@ for (let i = 0; i < 4; i++) {
   const term = new Terminal({
     fontSize: 12,
     fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-    theme: { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0' },
+    theme: {
+      background: 'rgba(0,0,0,0)',
+      foreground: '#e2e8f0',
+      cursor: '#e2e8f0',
+      cursorAccent: '#0a0e17',
+      selectionBackground: 'rgba(255,255,255,0.15)',
+      selectionForeground: '#ffffff',
+    },
     cursorBlink: false,
     scrollback: 10000,
     convertEol: true,
@@ -815,6 +822,10 @@ function setActiveShell(idx) {
     modeHint.classList.add('visible');
     clearTimeout(modeHint._fadeTimer);
     modeHint._fadeTimer = setTimeout(() => modeHint.classList.remove('visible'), 2000);
+    // Brief pulse on input bar
+    const bar = document.querySelector('.input-bar');
+    bar.style.borderColor = 'rgba(148,163,184,0.3)';
+    setTimeout(() => { bar.style.borderColor = ''; }, 300);
   }
 }
 
@@ -1144,11 +1155,19 @@ inputEl.addEventListener('keydown', (e) => {
         if (!raw) timerStart[i] = Date.now();
         terms[i].scrollToBottom();
       }
+      for (let i = 0; i < 4; i++) {
+        shellEls[i].classList.remove('flash');
+        void shellEls[i].offsetWidth;
+        shellEls[i].classList.add('flash');
+      }
     } else {
       const idx = parseInt(val[0]) - 1;
       ws.send(JSON.stringify({ type: 'input', shell: idx, text: cmd, raw }));
       if (!raw) timerStart[idx] = Date.now();
       terms[idx].scrollToBottom();
+      shellEls[idx].classList.remove('flash');
+      void shellEls[idx].offsetWidth;
+      shellEls[idx].classList.add('flash');
     }
   }
 
