@@ -42,7 +42,7 @@ body {
   overflow: hidden;
 }
 
-  /* --- Grid with draggable gutters --- */
+  /* === GRID WITH DRAGGABLE GUTTERS === */
   .grid {
     flex: 1;
     display: grid;
@@ -51,6 +51,7 @@ body {
     padding: 6px;
     gap: 0;
     min-height: 0;
+    transition: grid-template-columns var(--transition-slow), grid-template-rows var(--transition-slow);
   }
 
   .gutter-col {
@@ -82,25 +83,28 @@ body {
   .shell {
     display: flex;
     flex-direction: column;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    border: 2px solid transparent;
-    transition: border-color 0.3s;
+    border: 1px solid var(--border-subtle);
+    transition: box-shadow var(--transition-slow), border-color var(--transition-slow), opacity var(--transition-slow);
     cursor: pointer;
     min-height: 0;
     min-width: 0;
   }
 
-  .shell.active { border-color: var(--accent) !important; }
+  .shell.active { border-color: rgba(var(--accent-rgb), 0.3); box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.15); }
   .shell.flash { animation: flash 0.5s ease-out; }
-  .shell.dead { opacity: 0.4; }
+  .shell.dead { opacity: 0.35; }
 
   .shell-header {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 3px 10px;
-    background: #1a1a1a;
+    background: var(--surface-2);
+    backdrop-filter: var(--glass-blur-md);
+    -webkit-backdrop-filter: var(--glass-blur-md);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 12px;
     font-weight: 600;
     flex-shrink: 0;
@@ -117,6 +121,7 @@ body {
     font-weight: 700;
     color: #0a0a0a;
     background: var(--accent);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
     flex-shrink: 0;
   }
 
@@ -125,12 +130,14 @@ body {
     cursor: text;
     padding: 1px 4px;
     border-radius: 3px;
-    border: 1px solid transparent;
+    border: none;
     min-width: 40px;
     outline: none;
+    text-decoration: transparent underline;
+    transition: text-decoration-color var(--transition-fast);
   }
-  .shell-title:hover { border-color: #333; }
-  .shell-title:focus { border-color: var(--accent); background: #0a0a0a; }
+  .shell-title:hover { text-decoration-color: var(--text-muted); }
+  .shell-title:focus { text-decoration-color: var(--accent); background: rgba(0,0,0,0.3); }
 
   .shell-status {
     margin-left: auto;
@@ -149,8 +156,8 @@ body {
   }
   .shell-health.dead { background: #f87171; }
 
-  .shell-focus-hint { display: none; color: var(--accent); }
-  .shell.active .shell-focus-hint { display: inline; }
+  .shell-focus-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .shell.active .shell-focus-dot { display: inline-block; }
 
   .shell-timer {
     font-size: 10px;
@@ -158,24 +165,25 @@ body {
     font-variant-numeric: tabular-nums;
     min-width: 44px;
     text-align: right;
+    border-radius: 4px;
+    padding: 1px 6px;
+    transition: all var(--transition-fast);
   }
-  .shell-timer.running { color: var(--accent); }
+  .shell-timer.running { color: var(--accent); background: rgba(var(--accent-rgb), 0.1); }
 
   .btn-voice {
-    background: #222;
-    border: 1px solid #444;
+    background: transparent;
+    border: none;
     border-radius: 4px;
-    color: #aaa;
+    color: var(--text-muted);
     cursor: pointer;
-    padding: 2px 6px;
-    font-size: 11px;
-    font-family: inherit;
-    font-weight: 600;
-    line-height: 1.2;
-    transition: all 0.15s;
+    padding: 2px 4px;
+    font-size: 14px;
+    line-height: 1;
+    transition: all var(--transition-fast);
   }
-  .btn-voice:hover { border-color: var(--accent); color: var(--accent); background: #2a2a2a; }
-  .btn-voice.voice-active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+  .btn-voice:hover { color: var(--accent); }
+  .btn-voice.voice-active { color: var(--accent); text-shadow: 0 0 6px var(--accent); }
 
   .shell-search {
     display: none;
@@ -214,20 +222,27 @@ body {
     padding: 4px;
   }
 
-  .s1 { --accent: #4ade80; }
-  .s2 { --accent: #60a5fa; }
-  .s3 { --accent: #facc15; }
-  .s4 { --accent: #c084fc; }
+  .s1 { --accent: #4ade80; --accent-rgb: 74,222,128; }
+  .s2 { --accent: #60a5fa; --accent-rgb: 96,165,250; }
+  .s3 { --accent: #facc15; --accent-rgb: 250,204,21; }
+  .s4 { --accent: #c084fc; --accent-rgb: 192,132,252; }
 
-  /* --- Bottom bar --- */
+  /* === BOTTOM BAR === */
   .input-bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 12px;
-    background: #1a1a1a;
-    border-top: 1px solid #333;
+    padding: 6px 14px;
+    background: var(--surface-2);
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    max-width: 780px;
+    margin: 0 auto 8px;
     flex-shrink: 0;
+    width: calc(100% - 16px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   }
 
   .input-preview {
@@ -273,6 +288,20 @@ body {
     align-items: center;
   }
 
+  .btn-icon {
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    font-size: 16px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    line-height: 1;
+  }
+  .btn-icon:hover { background: var(--surface-3); color: var(--text-primary); }
+  .btn-icon.danger { color: #f87171; }
+  .btn-icon.danger:hover { background: rgba(248,113,113,0.15); color: #ef4444; }
   .btn {
     border: none;
     border-radius: 6px;
@@ -283,55 +312,73 @@ body {
     cursor: pointer;
     white-space: nowrap;
   }
-  .btn-exit { background: #dc2626; color: #fff; }
-  .btn-exit:hover { background: #ef4444; }
   .btn-clear { background: #333; color: #ccc; }
   .btn-clear:hover { background: #444; }
-  .btn-layout { background: #333; color: #ccc; }
-  .btn-layout:hover { background: #444; }
 
-  .status {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
-  .status.connected { color: #4ade80; }
-  .status.disconnected { color: #f87171; }
+  .status-dot.connected { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+  .status-dot.disconnected { background: #f87171; }
 
   .mode-hint {
     font-size: 11px;
     color: #555;
     white-space: nowrap;
+    transition: opacity 0.5s ease;
   }
+  .mode-hint.fading { opacity: 0; }
 
-  /* --- Keyboard shortcuts overlay --- */
+  /* === KEYBOARD SHORTCUTS OVERLAY === */
   .shortcuts-overlay {
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: var(--glass-blur-sm);
+    -webkit-backdrop-filter: var(--glass-blur-sm);
     z-index: 100;
     align-items: center;
     justify-content: center;
   }
   .shortcuts-overlay.open { display: flex; }
   .shortcuts-box {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 12px;
+    background: var(--surface-2);
+    backdrop-filter: var(--glass-blur-lg);
+    -webkit-backdrop-filter: var(--glass-blur-lg);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-xl);
     padding: 24px 32px;
-    max-width: 500px;
+    max-width: 520px;
     font-size: 13px;
     line-height: 2;
+    transform: scale(0.95);
+    opacity: 0;
+    transition: transform var(--transition-normal), opacity var(--transition-normal);
   }
+  .shortcuts-overlay.open .shortcuts-box { transform: scale(1); opacity: 1; }
   .shortcuts-box h3 { margin-bottom: 8px; color: #fff; }
+  .shortcuts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
   .shortcuts-box kbd {
-    background: #333;
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 12px;
     color: #e0e0e0;
   }
+
+  /* === SCROLLBAR === */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+  .xterm-viewport::-webkit-scrollbar { width: 6px; }
+  .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(var(--accent-rgb), 0.3); border-radius: 3px; }
 
   @keyframes flash {
     0% { border-color: var(--accent); box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -347,8 +394,8 @@ body {
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-0" data-shell="0" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-health" id="health-0"></span>
       </div>
@@ -369,8 +416,8 @@ body {
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-1" data-shell="1" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-health" id="health-1"></span>
       </div>
@@ -391,8 +438,8 @@ body {
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-2" data-shell="2" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-health" id="health-2"></span>
       </div>
@@ -411,8 +458,8 @@ body {
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
       <div class="shell-status">
-        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode">MIC</button>
-        <span class="shell-focus-hint">focused</span>
+        <button class="btn-voice" id="voice-3" data-shell="3" title="Toggle voice mode" aria-label="Voice mode">🎤</button>
+        <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-health" id="health-3"></span>
       </div>
@@ -436,33 +483,38 @@ body {
   <input type="text" id="input" placeholder="1-4 = target, * = all.  Click pane to type direct.  Esc = bar.  ? = keys">
   <span class="mode-hint" id="mode-hint">bar mode</span>
   <div class="bar-buttons">
-    <button class="btn btn-layout" id="btn-layout" title="Toggle layout">2x2</button>
-    <button class="btn btn-clear" id="btn-clear" title="Clear all terminals">Clear</button>
-    <button class="btn btn-exit" id="btn-exit">Exit All</button>
+    <button class="btn-icon" id="btn-layout" title="Toggle layout" aria-label="Toggle layout">⊞</button>
+    <button class="btn-icon" id="btn-clear" title="Clear all terminals" aria-label="Clear all">⌫</button>
+    <button class="btn-icon danger" id="btn-exit" title="Exit all instances" aria-label="Exit all">⏻</button>
   </div>
-  <span class="status disconnected" id="status">disconnected</span>
+  <span class="status-dot disconnected" id="status" title="disconnected"></span>
 </div>
 
 <!-- Keyboard shortcuts overlay -->
 <div class="shortcuts-overlay" id="shortcuts">
   <div class="shortcuts-box">
     <h3>Keyboard Shortcuts</h3>
-    <kbd>Esc</kbd> Return to input bar<br>
-    <kbd>Ctrl+1</kbd>-<kbd>4</kbd> Focus pane directly<br>
-    <kbd>Ctrl+F</kbd> Search in focused pane<br>
-    <kbd>Ctrl+L</kbd> Clear focused pane<br>
-    <kbd>Ctrl+Shift+L</kbd> Toggle layout<br>
-    <kbd>?</kbd> (in bar) Show this help<br>
+    <div class="shortcuts-grid">
+      <div>
+        <b style="color:var(--text-secondary)">Navigation</b><br>
+        <kbd>Esc</kbd> Return to input bar<br>
+        <kbd>Ctrl+1</kbd>-<kbd>4</kbd> Focus pane<br>
+        <kbd>Ctrl+↑↓←→</kbd> Spatial nav<br>
+        <kbd>?</kbd> (in bar) This help<br>
+      </div>
+      <div>
+        <b style="color:var(--text-secondary)">Actions</b><br>
+        <kbd>Ctrl+F</kbd> Search pane<br>
+        <kbd>Ctrl+L</kbd> Clear pane<br>
+        <kbd>Ctrl+Shift+L</kbd> Layout<br>
+        <kbd>Ctrl+Shift+1</kbd>-<kbd>4</kbd> Maximize<br>
+        <kbd>Ctrl+B</kbd> Broadcast<br>
+      </div>
+    </div>
     <br>
-    <b>Input bar:</b><br>
-    <kbd>1</kbd>-<kbd>4</kbd> prefix = target pane<br>
-    <kbd>*</kbd> prefix = all panes<br>
-    Single char after prefix = raw keypress<br>
-    Multi-char = command + Enter<br>
-    <br>
-    <i style="color:#666">Click any pane title to rename it</i><br>
-    <br>
-    <button class="btn btn-clear" onclick="document.getElementById('shortcuts').classList.remove('open')">Close</button>
+    <b style="color:var(--text-secondary)">Input bar:</b>
+    <kbd>1</kbd>-<kbd>4</kbd> target pane &bull; <kbd>*</kbd> all panes &bull; single char = raw keypress<br>
+    <i style="color:var(--text-muted)">Click pane title to rename &bull; Double-click header to maximize</i>
   </div>
 </div>
 
@@ -557,10 +609,13 @@ function toggleSearch(idx, open) {
 }
 
 // --- Active shell management ---
+let modeHintTimer = null;
 function setActiveShell(idx) {
-  if (focusLocked && idx === -1) return; // block unfocus while locked
+  if (focusLocked && idx === -1) return;
   activeShell = idx;
   shellEls.forEach((el, i) => el.classList.toggle('active', i === idx));
+  modeHint.classList.remove('fading');
+  clearTimeout(modeHintTimer);
   if (idx >= 0) {
     terms[idx].focus();
     modeHint.textContent = `Claude ${idx + 1} focused`;
@@ -569,15 +624,16 @@ function setActiveShell(idx) {
     focusLocked = false;
     inputEl.focus();
     modeHint.textContent = 'bar mode';
-    modeHint.style.color = '#555';
+    modeHint.style.color = 'var(--text-muted)';
   }
+  modeHintTimer = setTimeout(() => modeHint.classList.add('fading'), 2000);
 }
 
 // --- Layout cycling ---
 function setLayout(idx) {
   currentLayout = idx;
   const l = layouts[idx];
-  btnLayout.textContent = l;
+  btnLayout.title = l;
 
   if (l === '2x2') {
     grid.style.gridTemplateColumns = '1fr 4px 1fr';
@@ -696,8 +752,8 @@ function connect() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    statusEl.textContent = 'connected';
-    statusEl.className = 'status connected';
+    statusEl.title = 'connected';
+    statusEl.className = 'status-dot connected';
     const cols = terms[0].cols;
     const rows = terms[0].rows;
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));
@@ -705,8 +761,8 @@ function connect() {
   };
 
   ws.onclose = () => {
-    statusEl.textContent = 'disconnected';
-    statusEl.className = 'status disconnected';
+    statusEl.title = 'disconnected';
+    statusEl.className = 'status-dot disconnected';
     setTimeout(connect, 2000);
   };
 
@@ -949,6 +1005,11 @@ function updateTimers() {
   });
 }
 setInterval(updateTimers, 1000);
+
+// --- Click backdrop to close shortcuts ---
+shortcutsOverlay.addEventListener('click', (e) => {
+  if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
+});
 
 connect();
 inputEl.focus();
