@@ -14,6 +14,7 @@ import os
 import pty
 import signal
 import shutil
+import socket
 import struct
 import fcntl
 import termios
@@ -81,6 +82,38 @@ async def autosave_loop():
         save_session()
 
 
+def kill_stale_server(port):
+    """Kill any existing QuadMux process on the target port."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.stdout.strip():
+            pids = set(result.stdout.strip().split("\n"))
+            my_pid = str(os.getpid())
+            for pid in pids:
+                if pid and pid != my_pid:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                        print(f"  Killed stale process {pid} on port {port}", flush=True)
+                    except (OSError, ValueError):
+                        pass
+            time.sleep(0.5)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
+def port_is_free(port):
+    """Check if a port is available."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("localhost", port))
+            return True
+        except OSError:
+            return False
+
+
 def find_claude():
     """Auto-detect the claude CLI path."""
     # Check common locations
@@ -100,8 +133,8 @@ def find_claude():
     sys.exit(1)
 
 
-def spawn_claude(claude_path, rows=24, cols=80):
-    """Spawn a Claude Code instance via pty.fork()."""
+def spawn_claude(claude_path, idx, rows=24, cols=80):
+    """Spawn a Claude Code instance via pty.fork(). Verifies child is alive."""
     pid, master_fd = pty.fork()
     if pid == 0:
         # Child process
@@ -114,6 +147,13 @@ def spawn_claude(claude_path, rows=24, cols=80):
             fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
         except OSError:
             pass
+        # Verify child didn't die immediately (bad path, missing deps, etc.)
+        time.sleep(0.3)
+        result = os.waitpid(pid, os.WNOHANG)
+        if result[0] != 0:
+            os.close(master_fd)
+            exit_code = os.WEXITSTATUS(result[1]) if os.WIFEXITED(result[1]) else -1
+            raise RuntimeError(f"Claude {idx+1} died immediately (exit {exit_code})")
         return pid, master_fd
 
 
@@ -264,19 +304,52 @@ def main():
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()
 
+    # 1. Find claude
     claude_path = find_claude()
     print(f"Using: {claude_path}", flush=True)
 
-    # Spawn BEFORE asyncio starts (pty.fork + asyncio ordering matters)
+    # 2. Clear stale server on same port
+    if not port_is_free(args.port):
+        print(f"Port {args.port} in use - killing stale server...", flush=True)
+        kill_stale_server(args.port)
+        time.sleep(0.5)
+        if not port_is_free(args.port):
+            print(f"Error: port {args.port} still in use. Run: lsof -ti :{args.port} | xargs kill", flush=True)
+            sys.exit(1)
+
+    # 3. Spawn BEFORE asyncio starts (pty.fork + asyncio ordering matters)
     for i in range(NUM_SHELLS):
-        pid, master_fd = spawn_claude(claude_path)
+        try:
+            pid, master_fd = spawn_claude(claude_path, i)
+        except RuntimeError as e:
+            print(f"Error: {e}", flush=True)
+            for prev_pid in child_pids:
+                try:
+                    os.kill(prev_pid, signal.SIGTERM)
+                except OSError:
+                    pass
+            for prev_fd in masters:
+                try:
+                    os.close(prev_fd)
+                except OSError:
+                    pass
+            sys.exit(1)
         child_pids.append(pid)
         masters.append(master_fd)
         print(f"  Claude {i+1}: PID {pid}, fd={master_fd}", flush=True)
 
+    # 4. Start reader threads
     for i, master_fd in enumerate(masters):
         t = threading.Thread(target=pty_reader_thread, args=(master_fd, i), daemon=True)
         t.start()
+
+    # 5. Wait briefly, then verify all children still alive
+    time.sleep(1)
+    for i, pid in enumerate(child_pids):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            print(f"Warning: Claude {i+1} (PID {pid}) died during startup", flush=True)
 
     print(f"QuadMux: {NUM_SHELLS} Claude instances running", flush=True)
     asyncio.run(serve(args.port))
