@@ -62,6 +62,7 @@ def spawn_claude(claude_path, rows=24, cols=80):
     pid, master_fd = pty.fork()
     if pid == 0:
         # Child process
+        os.environ.pop("ANTHROPIC_API_KEY", None)
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
         os.execv(claude_path, [claude_path])
@@ -116,10 +117,14 @@ def get_html_content():
     return "<html><body><h1>quadmux.html not found</h1></body></html>"
 
 
-async def http_handler(path, request_headers):
+async def http_handler(connection, request):
     """Serve the HTML UI on HTTP requests (non-WebSocket)."""
-    if "Upgrade" not in request_headers:
-        return (200, [("Content-Type", "text/html")], get_html_content().encode())
+    if request.headers.get("Upgrade", "").lower() != "websocket":
+        from websockets.http11 import Response
+        from websockets.datastructures import Headers
+        body = get_html_content().encode()
+        headers = Headers([("Content-Type", "text/html"), ("Content-Length", str(len(body)))])
+        return Response(200, "OK", headers, body)
     return None
 
 
