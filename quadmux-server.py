@@ -21,6 +21,7 @@ import select
 import sys
 import threading
 import subprocess
+import time
 
 try:
     import websockets
@@ -36,6 +37,48 @@ loop = None
 shell_buffers = []
 MAX_BUFFER = 200
 NUM_SHELLS = 4
+SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
+AUTOSAVE_INTERVAL = 30  # seconds
+
+
+def save_session():
+    """Save shell buffers and pane metadata to disk."""
+    os.makedirs(SESSION_DIR, exist_ok=True)
+    for idx in range(NUM_SHELLS):
+        path = os.path.join(SESSION_DIR, f"shell_{idx}.json")
+        try:
+            with open(path, "w") as f:
+                json.dump({"buffer": shell_buffers[idx], "saved_at": time.time()}, f)
+        except (OSError, TypeError) as e:
+            print(f"  Save error shell {idx}: {e}", flush=True)
+    print(f"  Session saved ({NUM_SHELLS} shells)", flush=True)
+
+
+def load_session():
+    """Load previous shell buffers from disk if available."""
+    loaded = [[] for _ in range(NUM_SHELLS)]
+    if not os.path.isdir(SESSION_DIR):
+        return loaded
+    for idx in range(NUM_SHELLS):
+        path = os.path.join(SESSION_DIR, f"shell_{idx}.json")
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                loaded[idx] = data.get("buffer", [])
+                saved = data.get("saved_at", 0)
+                age = time.time() - saved
+                print(f"  Loaded shell {idx}: {len(loaded[idx])} chunks ({age:.0f}s old)", flush=True)
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"  Load error shell {idx}: {e}", flush=True)
+    return loaded
+
+
+async def autosave_loop():
+    """Periodically save session state to disk."""
+    while True:
+        await asyncio.sleep(AUTOSAVE_INTERVAL)
+        save_session()
 
 
 def find_claude():
@@ -166,7 +209,8 @@ async def handler(ws):
                         alive.append(False)
                 await ws.send(json.dumps({"type": "health", "alive": alive}))
             elif data["type"] == "exit_all":
-                print("Exit all requested", flush=True)
+                print("Exit all requested - saving session", flush=True)
+                save_session()
                 for fd in masters:
                     try:
                         os.write(fd, b"/exit\r")
@@ -180,6 +224,9 @@ async def handler(ws):
                         pass
                 await asyncio.sleep(1)
                 os._exit(0)
+            elif data["type"] == "save_session":
+                save_session()
+                await ws.send(json.dumps({"type": "session_saved", "time": time.time()}))
             elif data["type"] == "resize":
                 cols = data.get("cols", 80)
                 rows = data.get("rows", 24)
@@ -198,6 +245,7 @@ async def handler(ws):
 async def serve(port):
     global loop
     loop = asyncio.get_running_loop()
+    asyncio.create_task(autosave_loop())
     print(f"QuadMux UI:  http://localhost:{port}", flush=True)
     print(f"WebSocket:   ws://localhost:{port}", flush=True)
     async with websockets.serve(handler, "localhost", port, process_request=http_handler):
@@ -213,7 +261,8 @@ def main():
     args = parser.parse_args()
 
     NUM_SHELLS = args.shells
-    shell_buffers = [[] for _ in range(NUM_SHELLS)]
+    # Load previous session buffers (conversation history survives restart)
+    shell_buffers = load_session()
 
     claude_path = find_claude()
     print(f"Using: {claude_path}", flush=True)
@@ -237,7 +286,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        print("\nShutting down... saving session", flush=True)
+        save_session()
         for pid in child_pids:
             try:
                 os.kill(pid, signal.SIGTERM)
