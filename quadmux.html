@@ -888,6 +888,18 @@ function connect() {
     return patterns.some(p => p.test(text));
   }
 
+  // Detect when Claude Code finishes a response and shows its prompt
+  // The ❯ character (U+276F) appears at the start of a line when Claude is ready for input
+  function isClaudePromptReady(text) {
+    // Look for the Claude Code prompt: ❯ at start of line (possibly with leading spaces/ANSI)
+    // Also check for the horizontal rule separator that appears after responses
+    const tail = text.slice(-100);
+    return /\u276F\s*$/.test(tail) || />\s*$/.test(tail);
+  }
+
+  // Debounced TTS trigger - waits for output to settle before speaking
+  const ttsTriggerTimers = [null, null, null, null];
+
   function isPermissionPrompt(text) {
     // Check last 200 chars (where the prompt lives) to reduce false positives
     const tail = text.slice(-200);
@@ -987,6 +999,20 @@ function connect() {
             setActiveShell(data.shell);
           }
           recentOutput[data.shell] = '';
+        }
+
+        // TTS: detect when Claude Code finishes responding (shows ❯ prompt)
+        // Use debounce to avoid triggering on intermediate prompt redraws
+        if (voiceTargetPane === data.shell && ttsBuffers[data.shell].length > 20) {
+          clearTimeout(ttsTriggerTimers[data.shell]);
+          ttsTriggerTimers[data.shell] = setTimeout(() => {
+            if (isClaudePromptReady(clean) && ttsBuffers[data.shell]) {
+              console.log('Voice TTS: Claude prompt detected, speaking response');
+              speakResponse(data.shell, ttsBuffers[data.shell]);
+              ttsBuffers[data.shell] = '';
+              timerStart[data.shell] = 0;
+            }
+          }, 800); // wait 800ms after last output to confirm prompt is stable
         }
 
         // Flash inactive panes on output
