@@ -136,6 +136,10 @@ body {
     outline: none;
     text-decoration: transparent underline;
     transition: text-decoration-color var(--transition-fast);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
   }
   .shell-title:hover { text-decoration-color: var(--text-muted); }
   .shell-title:focus { text-decoration-color: var(--accent); background: rgba(0,0,0,0.3); }
@@ -174,18 +178,58 @@ body {
 
   .btn-voice {
     background: transparent;
-    border: none;
+    border: 2px solid transparent;
     border-radius: 4px;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 6px 8px;
     font-size: 14px;
     line-height: 1;
+    min-width: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all var(--transition-fast);
+    position: relative;
   }
   .btn-voice:hover { color: var(--accent); }
-  .btn-voice.voice-active { color: var(--accent); text-shadow: 0 0 6px var(--accent); }
+  .btn-voice.voice-active {
+    color: #ef4444;
+    border-color: #ef4444;
+    animation: voice-pulse 1.5s ease-in-out infinite;
+  }
+  .btn-voice.voice-active.voice-hearing {
+    color: #22c55e;
+    border-color: #22c55e;
+    animation: voice-hearing 0.3s ease-in-out infinite;
+  }
   .btn-voice:focus-visible { background: var(--surface-3); }
+  @keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 2px #ef4444; }
+    50% { box-shadow: 0 0 8px #ef4444; }
+  }
+  @keyframes voice-hearing {
+    0%, 100% { box-shadow: 0 0 4px #22c55e; }
+    50% { box-shadow: 0 0 14px #22c55e; }
+  }
+  .voice-level-bar {
+    position: absolute;
+    bottom: 0;
+    left: 2px;
+    right: 2px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .voice-level-fill {
+    height: 100%;
+    width: 0%;
+    background: #22c55e;
+    border-radius: 2px;
+    transition: width 0.1s ease;
+  }
 
   .shell-search {
     display: none;
@@ -269,7 +313,7 @@ body {
   }
 
   .preview-arrow { color: #555; font-size: 12px; }
-  .preview-cmd { color: #999; font-size: 13px; }
+  .preview-cmd { color: #999; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 
   #input {
     flex: 1;
@@ -293,13 +337,18 @@ body {
   .btn-icon {
     border: none;
     border-radius: var(--radius-sm);
-    padding: 5px 8px;
+    padding: 10px 12px;
     font-size: 16px;
     cursor: pointer;
     background: transparent;
     color: var(--text-muted);
     transition: all var(--transition-fast);
     line-height: 1;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .btn-icon:hover { background: var(--surface-3); color: var(--text-primary); }
   .btn-icon.danger { color: #f87171; }
@@ -410,6 +459,21 @@ body {
     0% { border-color: var(--accent); box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent); }
     100% { border-color: transparent; box-shadow: none; }
   }
+
+  /* === RESPONSIVE === */
+  @media (max-width: 767px) {
+    .grid {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr 1fr 1fr 1fr !important;
+    }
+    .grid .gutter-col, .grid .gutter-row { display: none !important; }
+    .shell { grid-column: 1 !important; }
+    #shell-0 { grid-row: 1 !important; }
+    #shell-1 { grid-row: 2 !important; }
+    #shell-2 { grid-row: 3 !important; }
+    #shell-3 { grid-row: 4 !important; }
+    .input-bar { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -418,12 +482,12 @@ body {
   <div class="shell s1" id="shell-0" style="grid-column:1;grid-row:1;">
     <div class="shell-header">
       <div class="shell-number">1</div>
-      <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="0">Claude 1</div>
+      <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="0">Claude 1</div>
       <div class="shell-status">
-        <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;</button>
+        <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-0"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-0"></span>
-        <span class="shell-health" id="health-0"></span>
+        <span class="shell-health" id="health-0" title="alive" aria-label="alive"></span>
       </div>
     </div>
     <div class="shell-search" id="search-0">
@@ -440,12 +504,12 @@ body {
   <div class="shell s2" id="shell-1" style="grid-column:3;grid-row:1;">
     <div class="shell-header">
       <div class="shell-number">2</div>
-      <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="1">Claude 2</div>
+      <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="1">Claude 2</div>
       <div class="shell-status">
-        <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;</button>
+        <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-1"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-1"></span>
-        <span class="shell-health" id="health-1"></span>
+        <span class="shell-health" id="health-1" title="alive" aria-label="alive"></span>
       </div>
     </div>
     <div class="shell-search" id="search-1">
@@ -462,12 +526,12 @@ body {
   <div class="shell s3" id="shell-2" style="grid-column:1;grid-row:3;">
     <div class="shell-header">
       <div class="shell-number">3</div>
-      <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="2">Claude 3</div>
+      <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="2">Claude 3</div>
       <div class="shell-status">
-        <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;</button>
+        <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-2"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-2"></span>
-        <span class="shell-health" id="health-2"></span>
+        <span class="shell-health" id="health-2" title="alive" aria-label="alive"></span>
       </div>
     </div>
     <div class="shell-search" id="search-2">
@@ -482,12 +546,12 @@ body {
   <div class="shell s4" id="shell-3" style="grid-column:3;grid-row:3;">
     <div class="shell-header">
       <div class="shell-number">4</div>
-      <div class="shell-title" contenteditable="true" spellcheck="false" data-shell="3">Claude 4</div>
+      <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="3">Claude 4</div>
       <div class="shell-status">
-        <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;</button>
+        <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-3"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-3"></span>
-        <span class="shell-health" id="health-3"></span>
+        <span class="shell-health" id="health-3" title="alive" aria-label="alive"></span>
       </div>
     </div>
     <div class="shell-search" id="search-3">
@@ -570,6 +634,7 @@ const shortcutsOverlay = document.getElementById('shortcuts');
 let activeShell = -1;
 let focusLocked = false;
 let shellAlive = [true, true, true, true];
+const recentOutput = ['', '', '', ''];
 const layouts = ['2x2', '1x4', '4x1'];
 let currentLayout = 0;
 
@@ -601,7 +666,7 @@ for (let i = 0; i < 4; i++) {
     if (activeShell === i && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', shell: i, text: data, raw: true }));
       if (data.includes('\r') || data.includes('\n')) timerStart[i] = Date.now();
-      if (typeof recentOutput !== 'undefined') recentOutput[i] = '';
+      recentOutput[i] = '';
     }
   });
 
@@ -705,13 +770,13 @@ document.addEventListener('mousemove', (e) => {
   if (!dragging) return;
   const rect = grid.getBoundingClientRect();
   if (dragging === 'col') {
-    const pct = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
+    const pct = (e.clientX - rect.left) / rect.width * 100;
     const clamped = Math.max(15, Math.min(85, pct));
-    grid.style.gridTemplateColumns = `${clamped}% 4px ${100 - clamped}%`;
+    grid.style.gridTemplateColumns = `${clamped.toFixed(1)}% 4px ${(100 - clamped).toFixed(1)}%`;
   } else {
-    const pct = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
+    const pct = (e.clientY - rect.top) / rect.height * 100;
     const clamped = Math.max(15, Math.min(85, pct));
-    grid.style.gridTemplateRows = `${clamped}% 4px ${100 - clamped}%`;
+    grid.style.gridTemplateRows = `${clamped.toFixed(1)}% 4px ${(100 - clamped).toFixed(1)}%`;
   }
 });
 
@@ -757,9 +822,9 @@ function fitAll() {
   fitAddons.forEach(f => { try { f.fit(); } catch(e) {} });
   terms.forEach(t => t.scrollToBottom());
   if (ws && ws.readyState === WebSocket.OPEN) {
-    const cols = terms[0].cols;
-    const rows = terms[0].rows;
-    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    for (let i = 0; i < 4; i++) {
+      ws.send(JSON.stringify({ type: 'resize', shell: i, cols: terms[i].cols, rows: terms[i].rows }));
+    }
   }
 }
 
@@ -772,35 +837,41 @@ function updateHealth() {
   shellAlive.forEach((alive, i) => {
     const dot = document.getElementById(`health-${i}`);
     dot.classList.toggle('dead', !alive);
+    dot.title = alive ? 'alive' : 'dead';
+    dot.setAttribute('aria-label', alive ? 'alive' : 'dead');
     shellEls[i].classList.toggle('dead', !alive);
   });
 }
 
 // --- WebSocket ---
 let ws;
+let reconnectDelay = 2000;
 
 function connect() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
+    reconnectDelay = 2000;
     statusEl.title = 'connected';
     statusEl.className = 'status-dot connected';
-    const cols = terms[0].cols;
-    const rows = terms[0].rows;
-    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    for (let i = 0; i < 4; i++) {
+      ws.send(JSON.stringify({ type: 'resize', shell: i, cols: terms[i].cols, rows: terms[i].rows }));
+    }
     ws.send(JSON.stringify({ type: 'health_check' }));
   };
 
   ws.onclose = () => {
     statusEl.title = 'disconnected';
     statusEl.className = 'status-dot disconnected';
-    setTimeout(connect, 2000);
+    // Stop voice mode when WebSocket disconnects - no point listening with nowhere to send
+    if (voiceTargetPane >= 0) stopVoice();
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
   };
 
   let replayDone = false;
   setTimeout(() => { replayDone = true; terms.forEach(t => t.scrollToBottom()); }, 3000);
 
-  const recentOutput = ['', '', '', ''];
   const approvalBuffers = ['', '', '', ''];
   const approvalTimers = [null, null, null, null];
 
@@ -813,33 +884,50 @@ function connect() {
       /Do you want to/i,
       /Press Enter/i,
       /\? $/,
-      />\s*$/,
     ];
     return patterns.some(p => p.test(text));
   }
 
   function isPermissionPrompt(text) {
-    return /Allow\b/i.test(text) || /\[Y\/n\]/i.test(text) || /\(y\)/i.test(text)
-      || /\byes\b.*\bno\b/i.test(text) || /\bapprove\b/i.test(text)
-      || /Do you want to/i.test(text) || /Proceed\?/i.test(text);
+    // Check last 200 chars (where the prompt lives) to reduce false positives
+    const tail = text.slice(-200);
+    return /Allow this action\??/i.test(tail) || /\[Y\/n\]/i.test(tail) || /\(y\)/i.test(tail)
+      || /\bapprove\b.*\?/i.test(tail)
+      || /Do you want to .+\?/i.test(tail) || /Proceed\?/i.test(tail)
+      || /Allow\s+(Read|Write|Bash|Edit|Execute|Create|Delete|Glob|Grep|Skill)/i.test(tail);
   }
 
   function isSecurityRisk(text) {
     const lower = text.toLowerCase();
     // Only block truly destructive / irreversible operations
     const dangerous = [
-      'rm -rf', 'rm -r ',                              // recursive delete
+      'rm -rf', 'rm -r ', 'rm -fr',                    // recursive delete
       'drop table', 'drop database', 'truncate table', // data destruction
       'sudo ',                                          // privilege escalation
       'git push --force', 'git push -f',                // force push
       'git reset --hard',                               // discard all changes
-      'npm publish',                                    // publish to registry
+      'npm publish', 'yarn publish', 'pnpm publish',    // publish to registry
       'mkfs', 'dd if=',                                 // disk-level destruction
       'kubectl delete',                                 // k8s resource deletion
       '> /dev/',                                        // device writes
       'format c:', 'deltree',                           // legacy destructive
+      'chmod 777', 'chmod -r ',                         // dangerous permissions
+      '| sh', '| bash', '| zsh',                        // pipe to shell
+      'terraform destroy',                              // infra destruction
+      'docker system prune',                            // container cleanup
+      'aws s3 rm',                                      // cloud storage deletion
+      'heroku apps:destroy',                            // platform destruction
+      'shutdown', 'reboot',                             // system power
+      'iptables -f',                                    // flush firewall
+      'launchctl unload',                               // disable macos services
     ];
-    return dangerous.some(p => lower.includes(p));
+    if (dangerous.some(p => lower.includes(p))) return true;
+    // Catch git push with --force anywhere (e.g. git push origin main --force)
+    if (/git\s+push\b.*--force\b/.test(lower)) return true;
+    if (/git\s+push\b.*\s-f\b/.test(lower)) return true;
+    // Catch find ... -delete (both terms present in same command context)
+    if (/\bfind\b/.test(lower) && /\s-delete\b/.test(lower)) return true;
+    return false;
   }
 
   ws.onmessage = (e) => {
@@ -862,7 +950,7 @@ function connect() {
         if (recentOutput[data.shell].length > 500) {
           recentOutput[data.shell] = recentOutput[data.shell].slice(-500);
         }
-        const clean = recentOutput[data.shell].replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+        const clean = recentOutput[data.shell].replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '');
 
         // Auto-approve safe permission prompts
         approvalBuffers[data.shell] += data.text;
@@ -871,18 +959,17 @@ function connect() {
         }
         clearTimeout(approvalTimers[data.shell]);
         approvalTimers[data.shell] = setTimeout(() => {
-          const cleanApproval = approvalBuffers[data.shell].replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+          const cleanApproval = approvalBuffers[data.shell].replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '');
           if (isPermissionPrompt(cleanApproval)) {
             if (isSecurityRisk(cleanApproval)) {
               // Risky - focus pane, let user decide
               focusLocked = false;
               setActiveShell(data.shell);
-              focusLocked = true;
               shellEls[data.shell].style.borderColor = '#f87171';
               setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
             } else {
               // Safe - auto-approve
-              ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: true }));
+              ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: false }));
             }
           }
           approvalBuffers[data.shell] = '';
@@ -896,10 +983,8 @@ function connect() {
             speakResponse(data.shell, ttsBuffers[data.shell]);
             ttsBuffers[data.shell] = '';
           }
-          if (data.shell !== activeShell) {
-            focusLocked = false;
+          if (data.shell !== activeShell && !focusLocked) {
             setActiveShell(data.shell);
-            focusLocked = true;
           }
           recentOutput[data.shell] = '';
         }
@@ -1015,42 +1100,154 @@ document.querySelectorAll('.shell-title').forEach(el => {
   });
 });
 
-// --- Voice mode (Web Speech API + device selector + TTS) ---
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-const synth = window.speechSynthesis;
-let voiceRecognition = null;
+// --- Voice mode (Local Whisper STT + Kokoro TTS) ---
+// Rewritten with Web Audio silence detection, hallucination filtering, and level feedback
+const WHISPER_URL = 'http://localhost:2022/v1/audio/transcriptions';
+const KOKORO_URL = 'http://localhost:8880/v1/audio/speech';
+let voiceStream = null;
+let voiceMediaRecorder = null;
 let voiceTargetPane = -1;
+let voiceListening = false;
 let selectedMicId = localStorage.getItem('quadmux-mic-id') || '';
 let voiceTTSEnabled = true;
+let voiceAudioCtx = null;
+let voiceAnalyser = null;
+let voiceSourceNode = null;
+let currentTTSAudio = null;
+let voiceLevelRAF = null;
 
 // Track output per pane for TTS
 const ttsBuffers = ['', '', '', ''];
 const ttsTimers = [null, null, null, null];
 
+// Voice level elements
+const voiceLevelEls = [0,1,2,3].map(i => document.getElementById(`voice-level-${i}`));
+
+// Whisper hallucination filter - common artifacts when receiving silence or noise
+const WHISPER_HALLUCINATIONS = new Set([
+  '', 'you', 'thank you.', 'thanks for watching!', 'bye.', 'bye', 'the end.',
+  'the end', 'thanks.', 'thank you', 'thanks for watching', 'subtitles by',
+  '[blank_audio]', '[silence]', '[ silence ]', '[blank audio]', '[music]',
+  '[applause]', '[laughter]', 'so', 'okay.', 'hmm.', 'uh', 'um',
+  'thanks for listening.', 'please subscribe.', 'see you next time.',
+  'like and subscribe.', 'goodbye.', 'goodnight.', 'good night.',
+  'i\'m sorry.', 'you\'re welcome.', 'take care.', 'have a good day.',
+  'have a nice day.', 'see you later.', '...', '..', '.', 'oh',
+  'right.', 'okay', 'huh', 'ah', 'yes.', 'no.', 'yeah.', 'nah.',
+  'mhm.', 'mmm.', 'mm-hmm.', 'sure.', 'alright.', 'hey.',
+]);
+
+function isWhisperHallucination(text) {
+  if (!text || text.length < 3) return true;
+  const lower = text.toLowerCase().trim();
+  if (WHISPER_HALLUCINATIONS.has(lower)) return true;
+  // Anything in square brackets is a Whisper annotation, not speech
+  if (/^\[.*\]$/.test(lower)) return true;
+  // Repeated single characters or very short nonsense
+  if (/^(.)\1{2,}$/.test(lower)) return true;
+  return false;
+}
+
+// Get RMS audio level from analyser (0.0 - 1.0)
+function getAudioRMS() {
+  if (!voiceAnalyser) return 0;
+  const data = new Float32Array(voiceAnalyser.fftSize);
+  voiceAnalyser.getFloatTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+  return Math.sqrt(sum / data.length);
+}
+
+// Continuous audio level monitoring - updates visual feedback
+function startLevelMonitor() {
+  function update() {
+    if (!voiceListening || voiceTargetPane < 0) {
+      // Clear level bar when not listening
+      voiceLevelEls.forEach(el => { if (el) el.style.width = '0%'; });
+      return;
+    }
+    const rms = getAudioRMS();
+    const level = Math.min(rms * 15, 1); // scale up for visibility
+    const pct = Math.round(level * 100);
+    const btn = document.querySelector(`.btn-voice[data-shell="${voiceTargetPane}"]`);
+
+    // Update level bar
+    const levelEl = voiceLevelEls[voiceTargetPane];
+    if (levelEl) levelEl.style.width = pct + '%';
+
+    // Toggle hearing class when speech detected (RMS > 0.01)
+    if (btn) {
+      btn.classList.toggle('voice-hearing', rms > 0.01);
+    }
+
+    voiceLevelRAF = requestAnimationFrame(update);
+  }
+  voiceLevelRAF = requestAnimationFrame(update);
+}
+
+function stopLevelMonitor() {
+  if (voiceLevelRAF) { cancelAnimationFrame(voiceLevelRAF); voiceLevelRAF = null; }
+  voiceLevelEls.forEach(el => { if (el) el.style.width = '0%'; });
+  document.querySelectorAll('.btn-voice').forEach(b => b.classList.remove('voice-hearing'));
+}
+
 function stopVoice() {
+  voiceListening = false;
+  stopLevelMonitor();
   if (voiceTargetPane >= 0) {
     const btn = document.querySelector(`.btn-voice[data-shell="${voiceTargetPane}"]`);
-    if (btn) btn.classList.remove('voice-active');
+    if (btn) btn.classList.remove('voice-active', 'voice-hearing');
   }
-  if (voiceRecognition) {
-    voiceRecognition.abort();
-    voiceRecognition = null;
+  if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+    voiceMediaRecorder.stop();
+  }
+  voiceMediaRecorder = null;
+  if (voiceSourceNode) { try { voiceSourceNode.disconnect(); } catch(e) {} voiceSourceNode = null; }
+  if (voiceAnalyser) { voiceAnalyser = null; }
+  if (voiceAudioCtx) { try { voiceAudioCtx.close(); } catch(e) {} voiceAudioCtx = null; }
+  if (voiceStream) {
+    voiceStream.getTracks().forEach(t => t.stop());
+    voiceStream = null;
+  }
+  if (currentTTSAudio) {
+    currentTTSAudio.pause();
+    currentTTSAudio = null;
   }
   voiceTargetPane = -1;
 }
 
+// Backdrop click handler stored as named function so it can be removed/re-added
+let _micOverlayBackdropHandler = null;
+
 async function showMicSelector(thenStartIdx) {
   const overlay = document.getElementById('mic-select-overlay');
   const list = document.getElementById('mic-device-list');
-  // Request permission first so we get labels
-  try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); } catch(e) {}
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());
+  } catch(e) {
+    alert('Microphone permission denied. Grant access in browser settings and try again.');
+    return;
+  }
   const devices = await navigator.mediaDevices.enumerateDevices();
   const mics = devices.filter(d => d.kind === 'audioinput');
+  if (mics.length === 0) {
+    alert('No microphone found. Connect a mic and try again.');
+    return;
+  }
+
+  // Check if stored mic still exists
+  if (selectedMicId && !mics.some(m => m.deviceId === selectedMicId)) {
+    console.warn('Previously selected mic no longer available, clearing');
+    selectedMicId = '';
+    localStorage.removeItem('quadmux-mic-id');
+  }
+
   list.textContent = '';
   mics.forEach(mic => {
     const li = document.createElement('li');
     let label = mic.label || 'Microphone ' + mic.deviceId.slice(0,8);
-    if (mic.label.toLowerCase().includes('macbook') || mic.label.toLowerCase().includes('built-in')) {
+    if (label.toLowerCase().includes('macbook') || label.toLowerCase().includes('built-in')) {
       label += ' (recommended)';
     }
     li.textContent = label;
@@ -1064,104 +1261,228 @@ async function showMicSelector(thenStartIdx) {
     list.appendChild(li);
   });
   overlay.classList.add('open');
-  overlay.addEventListener('click', (e) => {
+  if (_micOverlayBackdropHandler) {
+    overlay.removeEventListener('click', _micOverlayBackdropHandler);
+  }
+  _micOverlayBackdropHandler = (e) => {
     if (e.target === overlay) overlay.classList.remove('open');
-  }, { once: true });
+  };
+  overlay.addEventListener('click', _micOverlayBackdropHandler);
+}
+
+// Record a chunk of audio with silence-aware recording:
+// - Waits up to 8s for speech to start (RMS > threshold)
+// - Once speech starts, records until 1.5s of silence or 15s max
+// - Only sends to Whisper if speech was detected
+function listenChunk() {
+  return new Promise((resolve) => {
+    if (!voiceStream || !voiceListening) { resolve(''); return; }
+
+    const SPEECH_THRESHOLD = 0.008;   // RMS above this = speech
+    const WAIT_FOR_SPEECH = 8000;     // max ms to wait for speech to start
+    const SILENCE_AFTER_SPEECH = 1500; // ms of silence after speech to stop
+    const MAX_RECORD = 15000;         // absolute max recording time
+
+    let speechDetected = false;
+    let speechStartTime = 0;
+    let lastSpeechTime = 0;
+    const startTime = Date.now();
+
+    // Set up MediaRecorder
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    }
+    const recorder = mimeType
+      ? new MediaRecorder(voiceStream, { mimeType })
+      : new MediaRecorder(voiceStream);
+    voiceMediaRecorder = recorder;
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    recorder.onstop = async () => {
+      if (!speechDetected || chunks.length === 0 || !voiceListening) {
+        resolve('');
+        return;
+      }
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      if (blob.size < 2000) { resolve(''); return; }
+      try {
+        const form = new FormData();
+        form.append('file', blob, 'audio.webm');
+        form.append('model', 'whisper-1');
+        form.append('response_format', 'json');
+        const resp = await fetch(WHISPER_URL, { method: 'POST', body: form });
+        if (!resp.ok) throw new Error('Whisper HTTP ' + resp.status);
+        const data = await resp.json();
+        resolve((data.text || '').trim());
+      } catch(e) {
+        console.warn('Whisper STT error:', e);
+        resolve('');
+      }
+    };
+    recorder.onerror = () => resolve('');
+    recorder.start(250); // collect data every 250ms
+
+    // Monitor audio levels to detect speech start/end
+    const monitor = setInterval(() => {
+      if (!voiceListening || voiceTargetPane < 0) {
+        clearInterval(monitor);
+        if (recorder.state === 'recording') recorder.stop();
+        return;
+      }
+
+      const rms = getAudioRMS();
+      const now = Date.now();
+
+      if (rms > SPEECH_THRESHOLD) {
+        if (!speechDetected) {
+          speechDetected = true;
+          speechStartTime = now;
+          console.log('Voice: speech detected (RMS=' + rms.toFixed(4) + ')');
+        }
+        lastSpeechTime = now;
+      }
+
+      // Wait phase: no speech detected yet
+      if (!speechDetected && (now - startTime) > WAIT_FOR_SPEECH) {
+        clearInterval(monitor);
+        if (recorder.state === 'recording') recorder.stop();
+        return;
+      }
+
+      // Recording phase: speech started, wait for silence
+      if (speechDetected && (now - lastSpeechTime) > SILENCE_AFTER_SPEECH) {
+        clearInterval(monitor);
+        if (recorder.state === 'recording') recorder.stop();
+        return;
+      }
+
+      // Absolute max recording time
+      if ((now - startTime) > MAX_RECORD) {
+        clearInterval(monitor);
+        if (recorder.state === 'recording') recorder.stop();
+        return;
+      }
+    }, 100);
+  });
+}
+
+// Continuous listen loop: record -> transcribe -> send -> repeat
+async function voiceLoop(idx) {
+  while (voiceListening && voiceTargetPane === idx) {
+    const text = await listenChunk();
+    if (text && voiceListening && voiceTargetPane === idx) {
+      if (isWhisperHallucination(text)) {
+        console.log('Voice: filtered hallucination:', JSON.stringify(text));
+        continue;
+      }
+      console.log('Voice: sending to pane ' + (idx+1) + ':', text);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', shell: idx, text: text, raw: false }));
+        timerStart[idx] = Date.now();
+        ttsBuffers[idx] = '';
+        // Flash the pane to show input was sent
+        shellEls[idx].classList.remove('flash');
+        void shellEls[idx].offsetWidth;
+        shellEls[idx].classList.add('flash');
+      }
+    }
+  }
 }
 
 async function startVoice(idx) {
-  if (!SpeechRecognition) {
-    alert('Speech recognition not supported. Use Chrome or Edge.');
-    return;
-  }
-  if (location.protocol === 'file:') {
-    alert('Voice requires HTTPS. Open via the server URL instead.');
-    return;
-  }
   const wasActive = voiceTargetPane;
   stopVoice();
-  if (wasActive === idx) return;
+  if (wasActive === idx) return; // toggle off
 
-  // If no mic selected yet, show selector first
+  // Check Whisper is reachable
+  try {
+    await fetch(WHISPER_URL.replace('/v1/audio/transcriptions', '/'), { method: 'GET', signal: AbortSignal.timeout(2000) });
+  } catch(e) {
+    alert('Local Whisper STT not reachable at localhost:2022.\nStart it with: voicemode service whisper start');
+    return;
+  }
+
+  // Validate stored mic still exists
+  if (selectedMicId) {
+    try {
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tempStream.getTracks().forEach(t => t.stop());
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter(d => d.kind === 'audioinput');
+      if (!mics.some(m => m.deviceId === selectedMicId)) {
+        console.warn('Stored mic ID not found, resetting');
+        selectedMicId = '';
+        localStorage.removeItem('quadmux-mic-id');
+      }
+    } catch(e) { /* ignore, will fail on getUserMedia below */ }
+  }
+
   if (!selectedMicId) {
     await showMicSelector(idx);
     return;
   }
 
-  // Claim the selected mic via getUserMedia (influences SpeechRecognition device)
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: selectedMicId } }
-    });
+    const constraints = selectedMicId
+      ? { audio: { deviceId: { exact: selectedMicId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+      : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+    voiceStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // Set up Web Audio analyser for silence detection and level monitoring
+    voiceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (voiceAudioCtx.state === 'suspended') await voiceAudioCtx.resume();
+    voiceAnalyser = voiceAudioCtx.createAnalyser();
+    voiceAnalyser.fftSize = 512;
+    voiceAnalyser.smoothingTimeConstant = 0.3;
+    voiceSourceNode = voiceAudioCtx.createMediaStreamSource(voiceStream);
+    voiceSourceNode.connect(voiceAnalyser);
+
     voiceTargetPane = idx;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      const target = voiceTargetPane;
-      if (target < 0) return;
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          const text = event.results[i][0].transcript.trim();
-          if (text && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'input', shell: target, text: text, raw: false }));
-            timerStart[target] = Date.now();
-            ttsBuffers[target] = '';
-          }
-        }
-      }
-    };
-
-    recognition.onerror = (event) => {
-      if (event.error !== 'aborted' && event.error !== 'no-speech') {
-        console.warn('Voice error pane ' + (idx+1) + ':', event.error);
-        if (event.error === 'not-allowed') {
-          alert('Microphone access denied. Check browser permissions.');
-        }
-        stopVoice();
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
-
-    recognition.onend = () => {
-      if (voiceTargetPane === idx && voiceRecognition) {
-        try { recognition.start(); } catch(e) { stopVoice(); stream.getTracks().forEach(t => t.stop()); }
-      } else {
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
-
-    recognition.start();
-    voiceRecognition = recognition;
+    voiceListening = true;
     const btn = document.querySelector(`.btn-voice[data-shell="${idx}"]`);
     if (btn) btn.classList.add('voice-active');
+    console.log('Voice started on pane ' + (idx+1) + ' with silence detection');
+
+    // Start visual level monitor
+    startLevelMonitor();
+
+    // Start the listen loop (runs async)
+    voiceLoop(idx);
   } catch(e) {
     console.error('Failed to start voice:', e);
     voiceTargetPane = -1;
     selectedMicId = '';
     localStorage.removeItem('quadmux-mic-id');
-    alert('Could not access selected microphone. Click mic again to choose a device.');
+    showMicSelector(idx);
   }
 }
 
-// TTS: speak Claude response when voice mode active and response finishes
-function speakResponse(paneIdx, text) {
-  if (!voiceTTSEnabled || voiceTargetPane !== paneIdx || !synth) return;
-  const clean = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim();
+// TTS via local Kokoro
+async function speakResponse(paneIdx, text) {
+  if (!voiceTTSEnabled || voiceTargetPane !== paneIdx) return;
+  const clean = text.replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '').trim();
   if (!clean || clean.length < 5) return;
   const toSpeak = clean.length > 500 ? clean.slice(0, 500) + '... response truncated.' : clean;
-  if (voiceRecognition) { try { voiceRecognition.stop(); } catch(e) {} }
-  const utterance = new SpeechSynthesisUtterance(toSpeak);
-  utterance.rate = 1.1;
-  utterance.pitch = 1.0;
-  utterance.onend = () => {
-    if (voiceTargetPane >= 0 && voiceRecognition) {
-      try { voiceRecognition.start(); } catch(e) {}
-    }
-  };
-  synth.speak(utterance);
+
+  try {
+    const resp = await fetch(KOKORO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'kokoro', input: toSpeak, voice: 'af_heart', response_format: 'mp3', speed: 1.1 })
+    });
+    if (!resp.ok) { console.warn('Kokoro TTS HTTP ' + resp.status); return; }
+    const audioBlob = await resp.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    if (currentTTSAudio) { currentTTSAudio.pause(); }
+    currentTTSAudio = new Audio(audioUrl);
+    currentTTSAudio.onended = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; };
+    currentTTSAudio.onerror = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; };
+    await currentTTSAudio.play();
+  } catch(e) {
+    console.warn('Kokoro TTS error:', e);
+  }
 }
 
 document.querySelectorAll('.btn-voice').forEach(btn => {
@@ -1169,11 +1490,12 @@ document.querySelectorAll('.btn-voice').forEach(btn => {
     e.stopPropagation();
     startVoice(parseInt(btn.dataset.shell));
   });
-  // Right-click to change mic device
   btn.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    showMicSelector(parseInt(btn.dataset.shell));
+    const paneIdx = parseInt(btn.dataset.shell);
+    if (voiceTargetPane >= 0) stopVoice();
+    showMicSelector(paneIdx);
   });
 });
 
