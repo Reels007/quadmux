@@ -765,8 +765,8 @@ const shortcutsOverlay = document.getElementById('shortcuts');
 
 // --- Theme: auto-switch by Bermuda local time, with manual override ---
 const THEMES = {
-  dark:  { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0' },
-  light: { background: '#fafbfc', foreground: '#1f2937', cursor: '#1f2937' },
+  dark:  { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0', selectionBackground: 'rgba(255,255,255,0.25)', selectionInactiveBackground: 'rgba(255,255,255,0.12)' },
+  light: { background: '#fafbfc', foreground: '#1f2937', cursor: '#1f2937', selectionBackground: 'rgba(37,99,235,0.25)', selectionInactiveBackground: 'rgba(37,99,235,0.12)' },
 };
 const THEME_GLYPH = { dark: '\u263E', light: '\u2600' }; // moon / sun
 function getAutoTheme() {
@@ -814,6 +814,8 @@ for (let i = 0; i < 4; i++) {
     cursorBlink: false,
     scrollback: 10000,
     convertEol: true,
+    macOptionClickForcesSelection: true,
+    rightClickSelectsWord: true,
   });
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
