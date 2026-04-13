@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="server-version" content="__SERVER_VERSION__">
 <title>QuadMux</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
 <!-- addon-search CSS loaded inline to avoid CDN MIME type error -->
@@ -31,6 +35,20 @@
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease-out;
   --transition-slow: 300ms ease;
+}
+
+/* Light theme — applied during Bermuda daytime (06:00–18:00 AST) or via toggle */
+body.theme-light {
+  --bg-base: #f6f8fb;
+  --bg-gradient: linear-gradient(145deg, #f6f8fb 0%, #e9eef5 100%);
+  --surface-1: rgba(0,0,0,0.03);
+  --surface-2: rgba(0,0,0,0.06);
+  --surface-3: rgba(0,0,0,0.10);
+  --border-subtle: rgba(0,0,0,0.08);
+  --border-medium: rgba(0,0,0,0.14);
+  --text-primary: #1f2937;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
 }
 
 body {
@@ -573,6 +591,7 @@ body {
   <input type="text" id="input" placeholder="1-4 = target, * = all.  ? = keys">
   <span class="mode-hint" id="mode-hint">bar mode</span>
   <div class="bar-buttons">
+    <button class="btn-icon" id="btn-theme" title="Toggle theme (right-click to reset to auto)" aria-label="Toggle theme">&#x263E;</button>
     <button class="btn-icon" id="btn-layout" title="Toggle layout" aria-label="Toggle layout">&#x229E;</button>
     <button class="btn-icon" id="btn-clear" title="Clear all terminals" aria-label="Clear all">&#x232B;</button>
     <button class="btn-icon danger" id="btn-exit" title="Exit all instances" aria-label="Exit all">&#x23FB;</button>
@@ -628,8 +647,38 @@ const modeHint = document.getElementById('mode-hint');
 const btnExit = document.getElementById('btn-exit');
 const btnClear = document.getElementById('btn-clear');
 const btnLayout = document.getElementById('btn-layout');
+const btnTheme = document.getElementById('btn-theme');
 const grid = document.getElementById('grid');
 const shortcutsOverlay = document.getElementById('shortcuts');
+
+// --- Theme: auto-switch by Bermuda local time, with manual override ---
+const THEMES = {
+  dark:  { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0' },
+  light: { background: '#fafbfc', foreground: '#1f2937', cursor: '#1f2937' },
+};
+const THEME_GLYPH = { dark: '\u263E', light: '\u2600' }; // moon / sun
+function getAutoTheme() {
+  // Bermuda is AST (UTC-4) year-round, no DST. Light during 06:00–18:00 local.
+  const hour = parseInt(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Atlantic/Bermuda', hour: 'numeric', hour12: false
+  }).format(new Date()), 10);
+  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
+}
+function applyTheme(name) {
+  document.body.classList.toggle('theme-light', name === 'light');
+  btnTheme.textContent = THEME_GLYPH[name];
+  if (typeof terms !== 'undefined' && terms.length) {
+    terms.forEach(t => { t.options.theme = THEMES[name]; });
+  }
+}
+function applyAutoIfNoOverride() {
+  if (localStorage.getItem('quadmux-theme-override')) return;
+  applyTheme(getAutoTheme());
+}
+// Pick initial theme BEFORE xterm instances are created so they start correct.
+const initialTheme = localStorage.getItem('quadmux-theme-override') || getAutoTheme();
+document.body.classList.toggle('theme-light', initialTheme === 'light');
+btnTheme.textContent = THEME_GLYPH[initialTheme];
 
 let activeShell = -1;
 let focusLocked = false;
@@ -649,7 +698,7 @@ for (let i = 0; i < 4; i++) {
   const term = new Terminal({
     fontSize: 12,
     fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-    theme: { background: '#111111', foreground: '#e0e0e0', cursor: '#e0e0e0' },
+    theme: THEMES[initialTheme],
     cursorBlink: false,
     scrollback: 10000,
     convertEol: true,
@@ -662,13 +711,24 @@ for (let i = 0; i < 4; i++) {
   fitAddons.push(fitAddon);
   searchAddons.push(searchAddon);
 
+  // Forward every keystroke unconditionally. xterm only fires onData when its
+  // own hidden textarea has DOM focus, so there is no risk of the wrong pane
+  // sending. The previous activeShell guard could silently drop input if the
+  // click handler hadn't updated activeShell yet (focus race).
   term.onData((data) => {
-    if (activeShell === i && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'input', shell: i, text: data, raw: true }));
-      if (data.includes('\r') || data.includes('\n')) timerStart[i] = Date.now();
-      recentOutput[i] = '';
-    }
+    safeSendInput({ type: 'input', shell: i, text: data, raw: true });
+    if (data.includes('\r') || data.includes('\n')) timerStart[i] = Date.now();
+    recentOutput[i] = '';
   });
+
+  // Keep activeShell in sync with whichever xterm textarea actually has focus,
+  // so highlighting and shortcuts always match where input is going.
+  if (term.textarea) {
+    term.textarea.addEventListener('focus', () => {
+      focusLocked = true;
+      if (activeShell !== i) setActiveShell(i);
+    });
+  }
 
   shellEls[i].addEventListener('click', (e) => {
     if (e.target.classList.contains('shell-title') || e.target.closest('.shell-search')) return;
@@ -846,6 +906,17 @@ function updateHealth() {
 // --- WebSocket ---
 let ws;
 let reconnectDelay = 2000;
+const PAGE_VERSION = (document.querySelector('meta[name="server-version"]') || {}).content || '';
+// Queue of input messages buffered while WebSocket is closed; flushed on reconnect.
+const pendingInput = [];
+function safeSendInput(payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  } else {
+    pendingInput.push(payload);
+    if (pendingInput.length > 500) pendingInput.shift();
+  }
+}
 
 function connect() {
   ws = new WebSocket(WS_URL);
@@ -858,6 +929,8 @@ function connect() {
       ws.send(JSON.stringify({ type: 'resize', shell: i, cols: terms[i].cols, rows: terms[i].rows }));
     }
     ws.send(JSON.stringify({ type: 'health_check' }));
+    // Flush any input typed while disconnected.
+    while (pendingInput.length) ws.send(JSON.stringify(pendingInput.shift()));
   };
 
   ws.onclose = () => {
@@ -944,17 +1017,22 @@ function connect() {
 
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
+    if (data.type === 'hello') {
+      // Server sends its per-process version on connect. If our cached page
+      // came from a previous server process, force a hard reload so we never
+      // run stale JavaScript against a fresh backend.
+      if (PAGE_VERSION && data.version && PAGE_VERSION !== data.version) {
+        console.warn('QuadMux: server version changed (' + PAGE_VERSION + ' -> ' + data.version + '), reloading');
+        location.reload();
+      }
+      return;
+    }
     if (data.type === 'output') {
       terms[data.shell].write(data.text);
       terms[data.shell].scrollToBottom();
 
-      // Accumulate output for TTS when voice mode is active
-      if (voiceTargetPane === data.shell && replayDone) {
-        ttsBuffers[data.shell] += data.text;
-        if (ttsBuffers[data.shell].length > 2000) {
-          ttsBuffers[data.shell] = ttsBuffers[data.shell].slice(-2000);
-        }
-      }
+      // For TTS: scrape the terminal's visible text when output settles
+      // (don't accumulate raw PTY stream - it's full of redraws and garbage)
 
       if (replayDone) {
         // Accumulate for prompt detection
@@ -990,30 +1068,13 @@ function connect() {
         // Stop timer when prompt detected (task finished)
         if (needsInput(clean)) {
           timerStart[data.shell] = 0;
-          // TTS: speak the accumulated response
-          if (ttsBuffers[data.shell]) {
-            speakResponse(data.shell, ttsBuffers[data.shell]);
-            ttsBuffers[data.shell] = '';
-          }
           if (data.shell !== activeShell && !focusLocked) {
             setActiveShell(data.shell);
           }
           recentOutput[data.shell] = '';
         }
 
-        // TTS: detect when Claude Code finishes responding (shows ❯ prompt)
-        // Use debounce to avoid triggering on intermediate prompt redraws
-        if (voiceTargetPane === data.shell && ttsBuffers[data.shell].length > 20) {
-          clearTimeout(ttsTriggerTimers[data.shell]);
-          ttsTriggerTimers[data.shell] = setTimeout(() => {
-            if (isClaudePromptReady(clean) && ttsBuffers[data.shell]) {
-              console.log('Voice TTS: Claude prompt detected, speaking response');
-              speakResponse(data.shell, ttsBuffers[data.shell]);
-              ttsBuffers[data.shell] = '';
-              timerStart[data.shell] = 0;
-            }
-          }, 800); // wait 800ms after last output to confirm prompt is stable
-        }
+        // (TTS handled server-side via voice_response messages)
 
         // Flash inactive panes on output
         if (data.shell !== activeShell) {
@@ -1021,6 +1082,12 @@ function connect() {
           void shellEls[data.shell].offsetWidth;
           shellEls[data.shell].classList.add('flash');
         }
+      }
+    } else if (data.type === 'voice_response') {
+      // Server extracted clean prose - speak it via Kokoro
+      if (voiceTargetPane === data.shell && data.text) {
+        console.log('Voice TTS (server):', data.text.slice(0, 80) + '...');
+        speakResponse(data.shell, data.text);
       }
     } else if (data.type === 'health') {
       shellAlive = data.alive;
@@ -1114,6 +1181,20 @@ btnExit.addEventListener('click', () => {
 btnClear.addEventListener('click', () => {
   terms.forEach(t => t.clear());
 });
+
+// Theme: left-click toggles + locks override; right-click clears override (back to auto).
+btnTheme.addEventListener('click', () => {
+  const next = document.body.classList.contains('theme-light') ? 'dark' : 'light';
+  localStorage.setItem('quadmux-theme-override', next);
+  applyTheme(next);
+});
+btnTheme.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  localStorage.removeItem('quadmux-theme-override');
+  applyTheme(getAutoTheme());
+});
+// Re-evaluate every minute so the theme flips at 06:00 / 18:00 Bermuda time.
+setInterval(applyAutoIfNoOverride, 60000);
 
 // --- Editable titles persist to localStorage ---
 document.querySelectorAll('.shell-title').forEach(el => {
@@ -1220,6 +1301,10 @@ function stopLevelMonitor() {
 function stopVoice() {
   voiceListening = false;
   stopLevelMonitor();
+  // Tell server voice stopped
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'voice_stop' }));
+  }
   if (voiceTargetPane >= 0) {
     const btn = document.querySelector(`.btn-voice[data-shell="${voiceTargetPane}"]`);
     if (btn) btn.classList.remove('voice-active', 'voice-hearing');
@@ -1296,25 +1381,15 @@ async function showMicSelector(thenStartIdx) {
   overlay.addEventListener('click', _micOverlayBackdropHandler);
 }
 
-// Record a chunk of audio with silence-aware recording:
-// - Waits up to 8s for speech to start (RMS > threshold)
-// - Once speech starts, records until 1.5s of silence or 15s max
-// - Only sends to Whisper if speech was detected
+// Record a fixed-length audio chunk and send to Whisper.
+// Simple approach: record 5s chunks, let Whisper handle silence detection.
+// The hallucination filter catches empty/noise chunks.
 function listenChunk() {
   return new Promise((resolve) => {
     if (!voiceStream || !voiceListening) { resolve(''); return; }
 
-    const SPEECH_THRESHOLD = 0.008;   // RMS above this = speech
-    const WAIT_FOR_SPEECH = 8000;     // max ms to wait for speech to start
-    const SILENCE_AFTER_SPEECH = 1500; // ms of silence after speech to stop
-    const MAX_RECORD = 15000;         // absolute max recording time
+    const CHUNK_DURATION = 5000; // 5s recording chunks
 
-    let speechDetected = false;
-    let speechStartTime = 0;
-    let lastSpeechTime = 0;
-    const startTime = Date.now();
-
-    // Set up MediaRecorder
     let mimeType = 'audio/webm;codecs=opus';
     if (!MediaRecorder.isTypeSupported(mimeType)) {
       mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
@@ -1327,12 +1402,10 @@ function listenChunk() {
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
     recorder.onstop = async () => {
-      if (!speechDetected || chunks.length === 0 || !voiceListening) {
-        resolve('');
-        return;
-      }
+      if (chunks.length === 0 || !voiceListening) { resolve(''); return; }
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      if (blob.size < 2000) { resolve(''); return; }
+      console.log('Voice: recorded chunk, size=' + blob.size + ' bytes');
+      if (blob.size < 1000) { resolve(''); return; }
       try {
         const form = new FormData();
         form.append('file', blob, 'audio.webm');
@@ -1341,56 +1414,26 @@ function listenChunk() {
         const resp = await fetch(WHISPER_URL, { method: 'POST', body: form });
         if (!resp.ok) throw new Error('Whisper HTTP ' + resp.status);
         const data = await resp.json();
-        resolve((data.text || '').trim());
+        const text = (data.text || '').trim();
+        console.log('Voice: Whisper returned:', JSON.stringify(text));
+        resolve(text);
       } catch(e) {
         console.warn('Whisper STT error:', e);
         resolve('');
       }
     };
-    recorder.onerror = () => resolve('');
-    recorder.start(250); // collect data every 250ms
+    recorder.onerror = (e) => { console.warn('MediaRecorder error:', e); resolve(''); };
+    recorder.start(500);
+    console.log('Voice: recording chunk...');
 
-    // Monitor audio levels to detect speech start/end
-    const monitor = setInterval(() => {
-      if (!voiceListening || voiceTargetPane < 0) {
-        clearInterval(monitor);
-        if (recorder.state === 'recording') recorder.stop();
-        return;
+    // Stop after CHUNK_DURATION
+    setTimeout(() => {
+      if (recorder.state === 'recording' && voiceListening) {
+        recorder.stop();
+      } else {
+        resolve('');
       }
-
-      const rms = getAudioRMS();
-      const now = Date.now();
-
-      if (rms > SPEECH_THRESHOLD) {
-        if (!speechDetected) {
-          speechDetected = true;
-          speechStartTime = now;
-          console.log('Voice: speech detected (RMS=' + rms.toFixed(4) + ')');
-        }
-        lastSpeechTime = now;
-      }
-
-      // Wait phase: no speech detected yet
-      if (!speechDetected && (now - startTime) > WAIT_FOR_SPEECH) {
-        clearInterval(monitor);
-        if (recorder.state === 'recording') recorder.stop();
-        return;
-      }
-
-      // Recording phase: speech started, wait for silence
-      if (speechDetected && (now - lastSpeechTime) > SILENCE_AFTER_SPEECH) {
-        clearInterval(monitor);
-        if (recorder.state === 'recording') recorder.stop();
-        return;
-      }
-
-      // Absolute max recording time
-      if ((now - startTime) > MAX_RECORD) {
-        clearInterval(monitor);
-        if (recorder.state === 'recording') recorder.stop();
-        return;
-      }
-    }, 100);
+    }, CHUNK_DURATION);
   });
 }
 
@@ -1430,30 +1473,9 @@ async function startVoice(idx) {
     return;
   }
 
-  // Validate stored mic still exists
-  if (selectedMicId) {
-    try {
-      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      tempStream.getTracks().forEach(t => t.stop());
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter(d => d.kind === 'audioinput');
-      if (!mics.some(m => m.deviceId === selectedMicId)) {
-        console.warn('Stored mic ID not found, resetting');
-        selectedMicId = '';
-        localStorage.removeItem('quadmux-mic-id');
-      }
-    } catch(e) { /* ignore, will fail on getUserMedia below */ }
-  }
-
-  if (!selectedMicId) {
-    await showMicSelector(idx);
-    return;
-  }
-
   try {
-    const constraints = selectedMicId
-      ? { audio: { deviceId: { exact: selectedMicId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
-      : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+    // Always use default system mic (no device selection needed)
+    const constraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
     voiceStream = await navigator.mediaDevices.getUserMedia(constraints);
 
     // Set up Web Audio analyser for silence detection and level monitoring
@@ -1467,9 +1489,13 @@ async function startVoice(idx) {
 
     voiceTargetPane = idx;
     voiceListening = true;
+    // Tell server which pane has voice active
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'voice_start', shell: idx }));
+    }
     const btn = document.querySelector(`.btn-voice[data-shell="${idx}"]`);
     if (btn) btn.classList.add('voice-active');
-    console.log('Voice started on pane ' + (idx+1) + ' with silence detection');
+    console.log('Voice started on pane ' + (idx+1) + ' using default mic');
 
     // Start visual level monitor
     startLevelMonitor();
@@ -1478,19 +1504,17 @@ async function startVoice(idx) {
     voiceLoop(idx);
   } catch(e) {
     console.error('Failed to start voice:', e);
+    alert('Microphone access failed. Check browser permissions.');
     voiceTargetPane = -1;
-    selectedMicId = '';
-    localStorage.removeItem('quadmux-mic-id');
-    showMicSelector(idx);
   }
 }
 
 // TTS via local Kokoro
 async function speakResponse(paneIdx, text) {
   if (!voiceTTSEnabled || voiceTargetPane !== paneIdx) return;
-  const clean = text.replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '').trim();
-  if (!clean || clean.length < 5) return;
-  const toSpeak = clean.length > 500 ? clean.slice(0, 500) + '... response truncated.' : clean;
+  // Server already extracted clean prose - just cap length
+  const toSpeak = text.length > 500 ? text.slice(0, 500) : text;
+  if (!toSpeak || toSpeak.length < 10) return;
 
   try {
     const resp = await fetch(KOKORO_URL, {
