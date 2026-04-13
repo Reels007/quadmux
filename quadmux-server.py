@@ -349,16 +349,31 @@ def get_html_content():
 
 
 async def http_handler(connection, request):
-    """Serve the HTML UI on HTTP requests (non-WebSocket)."""
-    if request.headers.get("Upgrade") is None:
-        from websockets.http11 import Response
-        from websockets.datastructures import Headers
-        return Response(200, "OK", Headers([
-            ("Content-Type", "text/html"),
-            ("Cache-Control", "no-cache, no-store, must-revalidate"),
-            ("Pragma", "no-cache"),
-            ("Expires", "0"),
-        ]), get_html_content().encode())
+    """Serve API routes or the HTML UI on HTTP requests (non-WebSocket)."""
+    if request.headers.get("Upgrade") is not None:
+        return  # let websockets handle the upgrade
+
+    from websockets.http11 import Response
+    from websockets.datastructures import Headers
+
+    try:
+        from voice_routes import dispatch
+        route_result = await dispatch(request)
+    except Exception as e:
+        print(f"  voice_routes.dispatch error: {e}", flush=True)
+        route_result = None
+
+    if route_result is not None:
+        status, header_pairs, body = route_result
+        return Response(status, "OK" if status == 200 else "ERR",
+                        Headers(list(header_pairs)), body)
+
+    return Response(200, "OK", Headers([
+        ("Content-Type", "text/html"),
+        ("Cache-Control", "no-cache, no-store, must-revalidate"),
+        ("Pragma", "no-cache"),
+        ("Expires", "0"),
+    ]), get_html_content().encode())
 
 
 async def handler(ws):
