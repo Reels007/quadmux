@@ -473,6 +473,86 @@ body {
   .mic-device-list li:hover { background: var(--surface-3); color: var(--text-primary); }
   .mic-device-list li.selected { color: #4ade80; background: rgba(74,222,128,0.1); }
 
+  .voice-section { margin-top: 16px; }
+  .voice-section-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .voice-engine-toggle {
+    display: flex;
+    gap: 6px;
+    background: var(--surface-3);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+  }
+  .voice-engine-toggle button {
+    flex: 1;
+    padding: 6px 10px;
+    background: transparent;
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .voice-engine-toggle button.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+  .voice-engine-toggle button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .voice-select, .voice-slider {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .voice-slider { padding: 0; accent-color: var(--accent); }
+  .voice-speed-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
+  .voice-speed-row input[type="range"] { flex: 1; }
+  .voice-health {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px 0;
+    border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+    margin-top: 12px;
+  }
+  .voice-health span { display: flex; align-items: center; gap: 4px; }
+  .voice-health .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #999;
+  }
+  .voice-health .dot.ok   { background: #4ade80; }
+  .voice-health .dot.down { background: #f87171; }
+  .voice-health .dot.wait { background: #facc15; animation: voice-pulse 1s ease-in-out infinite; }
+  .voice-footer-btn {
+    margin-top: 12px;
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .voice-footer-btn:hover { background: var(--accent); color: #000; }
+
   @keyframes flash {
     0% { border-color: var(--accent); box-shadow: 0 0 15px color-mix(in srgb, var(--accent) 30%, transparent); }
     100% { border-color: transparent; box-shadow: none; }
@@ -624,11 +704,43 @@ body {
   </div>
 </div>
 
-<!-- Mic device selector overlay -->
+<!-- Voice settings overlay (mic, engine, voice, speed, health) -->
 <div class="mic-select-overlay" id="mic-select-overlay">
   <div class="mic-select-box">
-    <h3>Select Microphone</h3>
-    <ul class="mic-device-list" id="mic-device-list"></ul>
+    <h3>Voice Settings</h3>
+
+    <div class="voice-section">
+      <label class="voice-section-label">Microphone</label>
+      <ul class="mic-device-list" id="mic-device-list"></ul>
+    </div>
+
+    <div class="voice-section">
+      <label class="voice-section-label">TTS Engine</label>
+      <div class="voice-engine-toggle" id="voice-engine-toggle">
+        <button type="button" data-engine="kokoro" class="active">Kokoro (local)</button>
+        <button type="button" data-engine="elevenlabs">ElevenLabs</button>
+      </div>
+    </div>
+
+    <div class="voice-section">
+      <label class="voice-section-label">Voice</label>
+      <select class="voice-select" id="voice-select"></select>
+    </div>
+
+    <div class="voice-section">
+      <label class="voice-section-label">Speed</label>
+      <div class="voice-speed-row">
+        <input class="voice-slider" id="voice-speed" type="range" min="0.7" max="1.5" step="0.05" value="1.1">
+        <span id="voice-speed-val">1.10&times;</span>
+      </div>
+    </div>
+
+    <div class="voice-health" id="voice-health">
+      <span><span class="dot" id="health-whisper"></span>Whisper</span>
+      <span><span class="dot" id="health-kokoro"></span>Kokoro</span>
+      <span><span class="dot" id="health-elevenlabs"></span>ElevenLabs</span>
+    </div>
+    <button class="voice-footer-btn" id="voice-restart-services" type="button">Start local services</button>
   </div>
 </div>
 
@@ -1207,8 +1319,7 @@ document.querySelectorAll('.shell-title').forEach(el => {
   });
 });
 
-// --- Voice mode (Local Whisper STT + Kokoro TTS) ---
-// Rewritten with Web Audio silence detection, hallucination filtering, and level feedback
+// --- Voice mode (Whisper STT + Kokoro/ElevenLabs TTS) ---
 const WHISPER_URL = 'http://localhost:2022/v1/audio/transcriptions';
 const KOKORO_URL = 'http://localhost:8880/v1/audio/speech';
 let voiceStream = null;
@@ -1222,6 +1333,14 @@ let voiceAnalyser = null;
 let voiceSourceNode = null;
 let currentTTSAudio = null;
 let voiceLevelRAF = null;
+
+// TTS engine settings (persisted)
+let ttsEngine   = localStorage.getItem('quadmux-tts-engine') || 'kokoro';
+let ttsVoiceKokoro     = localStorage.getItem('quadmux-tts-voice-kokoro')     || 'af_heart';
+let ttsVoiceElevenlabs = localStorage.getItem('quadmux-tts-voice-elevenlabs') || 'onwK4e9ZLuTAKqWW03F9';
+let ttsSpeed   = parseFloat(localStorage.getItem('quadmux-tts-speed') || '1.1');
+let voicesCatalog = { kokoro: [], elevenlabs: [] };
+let voiceHealth = { whisper: 'unknown', kokoro: 'unknown', elevenlabs: 'unknown' };
 
 // Track output per pane for TTS
 const ttsBuffers = ['', '', '', ''];
@@ -1327,34 +1446,28 @@ function stopVoice() {
   voiceTargetPane = -1;
 }
 
-// Backdrop click handler stored as named function so it can be removed/re-added
+// --- Voice settings overlay (mic + engine + voice + speed + health) ---
 let _micOverlayBackdropHandler = null;
 
-async function showMicSelector(thenStartIdx) {
-  const overlay = document.getElementById('mic-select-overlay');
+async function refreshMicList() {
   const list = document.getElementById('mic-device-list');
+  list.textContent = '';
   try {
     const s = await navigator.mediaDevices.getUserMedia({ audio: true });
     s.getTracks().forEach(t => t.stop());
   } catch(e) {
-    alert('Microphone permission denied. Grant access in browser settings and try again.');
+    const li = document.createElement('li');
+    li.textContent = 'Microphone permission denied';
+    li.style.color = '#f87171';
+    list.appendChild(li);
     return;
   }
   const devices = await navigator.mediaDevices.enumerateDevices();
   const mics = devices.filter(d => d.kind === 'audioinput');
-  if (mics.length === 0) {
-    alert('No microphone found. Connect a mic and try again.');
-    return;
-  }
-
-  // Check if stored mic still exists
   if (selectedMicId && !mics.some(m => m.deviceId === selectedMicId)) {
-    console.warn('Previously selected mic no longer available, clearing');
     selectedMicId = '';
     localStorage.removeItem('quadmux-mic-id');
   }
-
-  list.textContent = '';
   mics.forEach(mic => {
     const li = document.createElement('li');
     let label = mic.label || 'Microphone ' + mic.deviceId.slice(0,8);
@@ -1366,11 +1479,91 @@ async function showMicSelector(thenStartIdx) {
     li.addEventListener('click', () => {
       selectedMicId = mic.deviceId;
       localStorage.setItem('quadmux-mic-id', selectedMicId);
-      overlay.classList.remove('open');
-      if (thenStartIdx >= 0) startVoice(thenStartIdx);
+      document.querySelectorAll('#mic-device-list li').forEach(el => el.classList.remove('selected'));
+      li.classList.add('selected');
     });
     list.appendChild(li);
   });
+}
+
+function renderVoiceOptions() {
+  const sel = document.getElementById('voice-select');
+  const current = ttsEngine === 'kokoro' ? ttsVoiceKokoro : ttsVoiceElevenlabs;
+  sel.textContent = '';
+  (voicesCatalog[ttsEngine] || []).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.voice_id;
+    opt.textContent = v.name;
+    if (v.voice_id === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderEngineToggle() {
+  document.querySelectorAll('#voice-engine-toggle button').forEach(b => {
+    const eng = b.dataset.engine;
+    b.classList.toggle('active', eng === ttsEngine);
+    if (eng === 'elevenlabs') {
+      b.disabled = voiceHealth.elevenlabs === 'no-key';
+      b.title = b.disabled ? 'ELEVENLABS_API_KEY not set on server' : '';
+    }
+  });
+}
+
+function renderHealthDots() {
+  const set = (id, state) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'dot ' + (state === 'ok' ? 'ok' :
+                             state === 'wait' ? 'wait' :
+                             state === 'unknown' ? '' : 'down');
+  };
+  set('health-whisper',    voiceHealth.whisper);
+  set('health-kokoro',     voiceHealth.kokoro);
+  set('health-elevenlabs', voiceHealth.elevenlabs);
+}
+
+async function fetchVoiceHealth() {
+  try {
+    const r = await fetch('/api/health/voice', { cache: 'no-store' });
+    if (r.ok) voiceHealth = await r.json();
+  } catch(e) { /* leave as-is */ }
+  renderHealthDots();
+  renderEngineToggle();
+}
+
+async function fetchVoiceCatalog() {
+  try {
+    const r = await fetch('/api/tts/voices');
+    if (r.ok) voicesCatalog = await r.json();
+  } catch(e) { /* use defaults */ }
+  renderVoiceOptions();
+}
+
+async function ensureLocalServices() {
+  await fetchVoiceHealth();
+  const needsStart = voiceHealth.whisper !== 'ok' || voiceHealth.kokoro !== 'ok';
+  if (!needsStart) return;
+  if (voiceHealth.whisper !== 'ok') voiceHealth.whisper = 'wait';
+  if (voiceHealth.kokoro  !== 'ok') voiceHealth.kokoro  = 'wait';
+  renderHealthDots();
+  try { await fetch('/api/voice/start'); } catch(e) {}
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    await fetchVoiceHealth();
+    if (voiceHealth.whisper === 'ok' && voiceHealth.kokoro === 'ok') return;
+  }
+}
+
+async function showVoiceSettings() {
+  const overlay = document.getElementById('mic-select-overlay');
+  await refreshMicList();
+  await fetchVoiceCatalog();
+  renderEngineToggle();
+  renderVoiceOptions();
+  document.getElementById('voice-speed').value = ttsSpeed;
+  document.getElementById('voice-speed-val').textContent = ttsSpeed.toFixed(2) + '\u00d7';
+  renderHealthDots();
   overlay.classList.add('open');
   if (_micOverlayBackdropHandler) {
     overlay.removeEventListener('click', _micOverlayBackdropHandler);
@@ -1380,6 +1573,40 @@ async function showMicSelector(thenStartIdx) {
   };
   overlay.addEventListener('click', _micOverlayBackdropHandler);
 }
+
+document.querySelectorAll('#voice-engine-toggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.disabled) return;
+    ttsEngine = b.dataset.engine;
+    localStorage.setItem('quadmux-tts-engine', ttsEngine);
+    renderEngineToggle();
+    renderVoiceOptions();
+  });
+});
+document.getElementById('voice-select').addEventListener('change', (e) => {
+  if (ttsEngine === 'kokoro') {
+    ttsVoiceKokoro = e.target.value;
+    localStorage.setItem('quadmux-tts-voice-kokoro', ttsVoiceKokoro);
+  } else {
+    ttsVoiceElevenlabs = e.target.value;
+    localStorage.setItem('quadmux-tts-voice-elevenlabs', ttsVoiceElevenlabs);
+  }
+});
+document.getElementById('voice-speed').addEventListener('input', (e) => {
+  ttsSpeed = parseFloat(e.target.value);
+  localStorage.setItem('quadmux-tts-speed', String(ttsSpeed));
+  document.getElementById('voice-speed-val').textContent = ttsSpeed.toFixed(2) + '\u00d7';
+});
+document.getElementById('voice-restart-services').addEventListener('click', async () => {
+  voiceHealth.whisper = 'wait'; voiceHealth.kokoro = 'wait';
+  renderHealthDots();
+  try { await fetch('/api/voice/start'); } catch(e) {}
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    await fetchVoiceHealth();
+    if (voiceHealth.whisper === 'ok' && voiceHealth.kokoro === 'ok') break;
+  }
+});
 
 // Record a fixed-length audio chunk and send to Whisper.
 // Simple approach: record 5s chunks, let Whisper handle silence detection.
@@ -1465,12 +1692,19 @@ async function startVoice(idx) {
   stopVoice();
   if (wasActive === idx) return; // toggle off
 
-  // Check Whisper is reachable
-  try {
-    await fetch(WHISPER_URL.replace('/v1/audio/transcriptions', '/'), { method: 'GET', signal: AbortSignal.timeout(2000) });
-  } catch(e) {
-    alert('Local Whisper STT not reachable at localhost:2022.\nStart it with: voicemode service whisper start');
-    return;
+  // Verify Whisper is up — try to auto-start if not
+  await fetchVoiceHealth();
+  if (voiceHealth.whisper !== 'ok') {
+    console.log('Voice: Whisper not reachable, attempting auto-start...');
+    try { await fetch('/api/voice/start'); } catch(e) {}
+    for (let i = 0; i < 8 && voiceHealth.whisper !== 'ok'; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      await fetchVoiceHealth();
+    }
+    if (voiceHealth.whisper !== 'ok') {
+      alert('Whisper STT is not running and could not be started.\nCheck: voicemode service whisper start');
+      return;
+    }
   }
 
   try {
@@ -1509,21 +1743,41 @@ async function startVoice(idx) {
   }
 }
 
-// TTS via local Kokoro
 async function speakResponse(paneIdx, text) {
   if (!voiceTTSEnabled || voiceTargetPane !== paneIdx) return;
-  // Server already extracted clean prose - just cap length
   const toSpeak = text.length > 500 ? text.slice(0, 500) : text;
   if (!toSpeak || toSpeak.length < 10) return;
 
   try {
-    const resp = await fetch(KOKORO_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'kokoro', input: toSpeak, voice: 'af_heart', response_format: 'mp3', speed: 1.1 })
-    });
-    if (!resp.ok) { console.warn('Kokoro TTS HTTP ' + resp.status); return; }
-    const audioBlob = await resp.blob();
+    let audioBlob;
+    if (ttsEngine === 'elevenlabs') {
+      const q = new URLSearchParams({
+        text: toSpeak,
+        voice_id: ttsVoiceElevenlabs,
+        speed: String(ttsSpeed),
+      });
+      const resp = await fetch('/api/tts/elevenlabs?' + q.toString());
+      if (!resp.ok) {
+        console.warn('ElevenLabs TTS HTTP ' + resp.status, await resp.text().catch(()=>''));
+        return;
+      }
+      audioBlob = await resp.blob();
+    } else {
+      const resp = await fetch(KOKORO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'kokoro',
+          input: toSpeak,
+          voice: ttsVoiceKokoro,
+          response_format: 'mp3',
+          speed: ttsSpeed,
+        })
+      });
+      if (!resp.ok) { console.warn('Kokoro TTS HTTP ' + resp.status); return; }
+      audioBlob = await resp.blob();
+    }
+
     const audioUrl = URL.createObjectURL(audioBlob);
     if (currentTTSAudio) { currentTTSAudio.pause(); }
     currentTTSAudio = new Audio(audioUrl);
@@ -1531,7 +1785,7 @@ async function speakResponse(paneIdx, text) {
     currentTTSAudio.onerror = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; };
     await currentTTSAudio.play();
   } catch(e) {
-    console.warn('Kokoro TTS error:', e);
+    console.warn('TTS error (' + ttsEngine + '):', e);
   }
 }
 
@@ -1543,11 +1797,13 @@ document.querySelectorAll('.btn-voice').forEach(btn => {
   btn.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const paneIdx = parseInt(btn.dataset.shell);
     if (voiceTargetPane >= 0) stopVoice();
-    showMicSelector(paneIdx);
+    showVoiceSettings();
   });
 });
+
+// Page-load: health check + attempt auto-start of local services
+ensureLocalServices().then(fetchVoiceCatalog).catch(() => {});
 
 // --- Runtime timers ---
 const timerStart = [0, 0, 0, 0];
