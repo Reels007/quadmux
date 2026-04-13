@@ -91,7 +91,7 @@ async def _start_services() -> RouteResult:
     for svc in ("whisper", "kokoro"):
         try:
             proc = await asyncio.create_subprocess_exec(
-                "voicemode", "service", svc, "start",
+                "voicemode", "service", "start", svc,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
