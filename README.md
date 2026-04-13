@@ -38,7 +38,7 @@ pip install websockets
 # Run it
 python3 quadmux-server.py
 
-# Open http://localhost:8765 in your browser
+# Open http://localhost:8766 in your browser
 ```
 
 The server spawns 4 Claude Code instances and serves the web UI on the same port.
@@ -80,7 +80,7 @@ python3 quadmux-server.py --shells 2 --port 9000
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--shells` | 4 | Number of Claude instances |
-| `--port` | 8765 | HTTP/WebSocket port |
+| `--port` | 8766 | HTTP/WebSocket port (8765 is used by voicemode MCP) |
 
 ## How It Works
 

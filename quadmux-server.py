@@ -560,7 +560,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="QuadMux - Multi-pane Claude Code multiplexer")
     parser.add_argument("--shells", type=int, default=4, help="Number of Claude instances (default: 4)")
-    parser.add_argument("--port", type=int, default=8765, help="WebSocket/HTTP port (default: 8765)")
+    parser.add_argument("--port", type=int, default=8766, help="WebSocket/HTTP port (default: 8766; 8765 is used by voicemode MCP)")
     args = parser.parse_args()
 
     NUM_SHELLS = args.shells
