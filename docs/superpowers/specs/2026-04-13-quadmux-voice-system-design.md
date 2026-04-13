@@ -1,4 +1,4 @@
-# QuadMux Voice System — Design
+# QuadMux Voice System - Design
 
 **Status:** Approved 2026-04-13
 **Author:** Sean Reel + Claude
@@ -12,7 +12,7 @@ Prior voice implementations in QuadMux have been unreliable. All of the followin
 2. Ambient noise (music, thumping, keyboard clicks) transcribed as commands.
 3. High latency between speech and text.
 4. TTS either silent or spoke raw terminal output (ANSI, prompts).
-5. No voice selection — JARVIS not usable.
+5. No voice selection - JARVIS not usable.
 6. Required local services (Whisper, Kokoro) crashed silently.
 7. No keyword / hands-free activation (click-each-time only).
 
@@ -29,7 +29,7 @@ The existing system scrapes raw terminal output to decide what to speak, runs lo
 ## Non-goals
 
 - Wake-word / hands-free activation. (Can be added later via Picovoice Porcupine.)
-- Acoustic echo cancellation. (Added later if TTS feedback loop proves to be a problem in practice — assumes headphones for now.)
+- Acoustic echo cancellation. (Added later if TTS feedback loop proves to be a problem in practice - assumes headphones for now.)
 - Per-pane voice personalization. (One global voice, one global session at a time.)
 - Mobile browser support.
 
@@ -111,14 +111,14 @@ Endpoints:
 |--------|------|---------|
 | `POST` | `/api/stt` | Audio in (multipart `audio/webm`), transcript JSON out. Tries ElevenLabs first; falls back to local Whisper on 4xx/5xx/timeout. |
 | `POST` | `/api/tts` | Body: `{text, voice_id, provider}`. Streams audio bytes back. |
-| `GET` | `/api/voices` | Returns `{elevenlabs: [...], kokoro: [...], browser: null}`. ElevenLabs list is cached for 1 hour. Browser voices are enumerated client-side — this endpoint returns `null` for that tier as a sentinel. |
+| `GET` | `/api/voices` | Returns `{elevenlabs: [...], kokoro: [...], browser: null}`. ElevenLabs list is cached for 1 hour. Browser voices are enumerated client-side - this endpoint returns `null` for that tier as a sentinel. |
 | `GET` | `/api/health/voice` | Probes each provider; returns `{elevenlabs, local_whisper, kokoro}` each as `ok \| down \| unconfigured`. |
 | `WS`   | existing   | New message types: `voice_response`, `voice_health`, `voice_error`. |
 
 Environment:
-- `ELEVENLABS_API_KEY` — read from process env (already set in `~/.zshrc`).
-- `KOKORO_URL` — default `http://localhost:8880`.
-- `WHISPER_URL` — default `http://localhost:2022` (fallback only).
+- `ELEVENLABS_API_KEY` - read from process env (already set in `~/.zshrc`).
+- `KOKORO_URL` - default `http://localhost:8880`.
+- `WHISPER_URL` - default `http://localhost:2022` (fallback only).
 
 ### 3. Server: transcript watcher (new, inside quadmux-server)
 
@@ -126,7 +126,7 @@ When voice is active for pane `N`:
 1. Resolve the session's transcript path from Claude Code's session state (`~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`).
 2. Open the file and seek to EOF.
 3. On each new line, parse JSON; if `type == "assistant"` and there's text content, emit a `voice_response` WebSocket message with the text delta.
-4. Strip markdown (code fences, backticks, headers) before emitting — spoken code is noise.
+4. Strip markdown (code fences, backticks, headers) before emitting - spoken code is noise.
 5. Stop watching when voice is deactivated or the pane is closed.
 
 ### 4. Browser: voice settings modal (new)
@@ -137,16 +137,16 @@ Triggered by:
 
 Fields:
 - Voice dropdown, grouped:
-  - **ElevenLabs — Premium**: JARVIS (Daniel), Rachel, Adam, Nicole, Bella, Antoni
-  - **Kokoro — Local free**: af_bella, af_nicole, am_adam, am_michael
-  - **Browser — System voices**: enumerated via `speechSynthesis.getVoices()` at runtime
+  - **ElevenLabs - Premium**: JARVIS (Daniel), Rachel, Adam, Nicole, Bella, Antoni
+  - **Kokoro - Local free**: af_bella, af_nicole, am_adam, am_michael
+  - **Browser - System voices**: enumerated via `speechSynthesis.getVoices()` at runtime
 - Mic device dropdown (populated from `enumerateDevices()`).
 - Health indicator row: 🟢 🟡 🔴 per service with "reconfigure" link for ElevenLabs if unconfigured.
-- "Test voice" button — speaks a sample phrase.
+- "Test voice" button - speaks a sample phrase.
 
 Persisted in `localStorage` under keys `quadmux-voice-pick` and `quadmux-mic-device`.
 
-## Data flow — one conversation turn
+## Data flow - one conversation turn
 
 ```
 user clicks mic
@@ -176,14 +176,14 @@ Principle: **no silent failures**. Every failure produces a visible banner and a
 
 | Failure | Behavior |
 |---------|----------|
-| ElevenLabs returns 401 | Banner: "ElevenLabs key invalid — falling back to local Whisper/Kokoro." Health: 🟡. Settings modal opened to the key field. |
-| ElevenLabs timeout (>8 s) or 5xx | Retry once. Then fall back to local Whisper (STT) / Kokoro (TTS). Banner: "ElevenLabs slow — using local fallback." |
+| ElevenLabs returns 401 | Banner: "ElevenLabs key invalid - falling back to local Whisper/Kokoro." Health: 🟡. Settings modal opened to the key field. |
+| ElevenLabs timeout (>8 s) or 5xx | Retry once. Then fall back to local Whisper (STT) / Kokoro (TTS). Banner: "ElevenLabs slow - using local fallback." |
 | Local Whisper not running (fallback requested) | Banner: "Fallback STT unavailable. Click to start Whisper service or reconfigure ElevenLabs." Voice session ends. |
-| Kokoro not running | Skip to browser `speechSynthesis`. Banner: "Using system voice — Kokoro unavailable." |
+| Kokoro not running | Skip to browser `speechSynthesis`. Banner: "Using system voice - Kokoro unavailable." |
 | All TTS tiers fail | Banner: "No TTS available. Text responses only." Voice responses print to a toast instead of speaking. |
 | Mic permission denied | Modal with platform-specific instructions and a deep link (Chrome: `chrome://settings/content/microphone`). |
 | Mic device disappears (unplug) | Banner: "Mic disconnected." Voice session ends. |
-| VAD detects no speech for 30 s after a turn | Chime, banner: "Didn't catch anything — click mic to resume." Session ends. |
+| VAD detects no speech for 30 s after a turn | Chime, banner: "Didn't catch anything - click mic to resume." Session ends. |
 | Transcript session file not found | Banner: "Can't find Claude Code session file. Make sure `claude` is running in this pane." |
 | WebSocket disconnects during active voice | Voice session ends immediately; banner on reconnect. |
 
@@ -202,7 +202,7 @@ Principle: **no silent failures**. Every failure produces a visible banner and a
 **Manual browser tests:**
 - 10-minute conversation on each of the 3 TTS tiers.
 - Failure injection: revoke ElevenLabs key mid-conversation, kill Kokoro, unplug mic. Verify banners and fallback behavior.
-- VAD tuning: test against music playing in room, typing, normal conversation — confirm no false triggers during the "listening" idle state (only during active click-to-start).
+- VAD tuning: test against music playing in room, typing, normal conversation - confirm no false triggers during the "listening" idle state (only during active click-to-start).
 - Cross-browser: Chrome (primary), Safari (secondary). Firefox support is stretch.
 
 ## What gets ripped out
@@ -229,8 +229,8 @@ Total lines removed: ≈ 300.
 
 ## Open questions (deferred, not blocking)
 
-- Do we want a "push-to-talk" hotkey as an alternative activation mode? (Deferred — click-only is locked for v1.)
-- Should voice settings sync across devices? (Out of scope — local-only for now.)
+- Do we want a "push-to-talk" hotkey as an alternative activation mode? (Deferred - click-only is locked for v1.)
+- Should voice settings sync across devices? (Out of scope - local-only for now.)
 - Is there a case for multiple simultaneous voice sessions across panes? (Explicitly ruled out per locked decision #5.)
 
 ## Rollout
