@@ -1402,8 +1402,28 @@ function connect() {
       pendingPermissions.clear();
       (data.requests || []).forEach(r => pendingPermissions.set(r.id, r));
       renderPermTray();
+    } else if (data.type === 'pane_meta') {
+      (data.panes || []).forEach(p => applyPaneMeta(p));
     }
   };
+}
+
+function applyPaneMeta(p) {
+  const titleEl = document.querySelector(`.shell-title[data-shell="${p.shell}"]`);
+  if (!titleEl) return;
+  // Only override if the title is the stock "Claude N" placeholder.
+  // Preserves any custom rename the user has typed into localStorage.
+  const stock = `Claude ${p.shell + 1}`;
+  const currentText = (titleEl.textContent || '').trim();
+  if (p.role) {
+    const newText = p.branch
+      ? `${p.role} · ${p.branch.replace(/^qm\//, '')}`
+      : p.role;
+    if (currentText === '' || currentText === stock) {
+      titleEl.textContent = newText;
+    }
+    titleEl.title = [p.role, p.cwd, p.branch].filter(Boolean).join(' | ');
+  }
 }
 
 // Per-pane agent state badge (status bus)

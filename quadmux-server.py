@@ -53,6 +53,8 @@ except ImportError:
 import re
 
 from status_bus import StatusBus
+import presets as presets_mod
+import worktree as worktree_mod
 
 masters = []
 child_pids = []
@@ -64,6 +66,11 @@ MAX_BUFFER = 200
 NUM_SHELLS = 4
 bus = None  # initialised in main() once NUM_SHELLS is final
 BUS_TICK_INTERVAL = 1.0
+
+# Phase 3: per-pane metadata (role, cwd, branch). Populated when --preset is used.
+pane_meta = []  # list of dicts indexed by shell idx
+worktree_repo = None  # path to the source repo if worktrees were created
+worktree_session_id = None  # for prune-on-shutdown
 SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
 AUTOSAVE_INTERVAL = 30  # seconds
 
@@ -254,8 +261,12 @@ def find_claude():
     sys.exit(1)
 
 
-def spawn_claude(claude_path, idx, rows=24, cols=80):
-    """Spawn a Claude Code instance via pty.fork(). Verifies child is alive."""
+def spawn_claude(claude_path, idx, rows=24, cols=80, cwd=None, extra_args=None):
+    """Spawn a Claude Code instance via pty.fork(). Verifies child is alive.
+
+    ``cwd``: optional working directory the child chdirs into before exec.
+    ``extra_args``: optional list of extra CLI args appended after argv[0].
+    """
     pid, master_fd = pty.fork()
     if pid == 0:
         # Child process - ensure full PATH for shebang scripts (macOS .app has minimal PATH)
@@ -266,8 +277,15 @@ def spawn_claude(claude_path, idx, rows=24, cols=80):
         os.environ["PATH"] = path
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
+        if cwd:
+            try:
+                os.chdir(cwd)
+            except OSError as e:
+                sys.stderr.write(f"chdir({cwd}) failed: {e}\n")
+                os._exit(126)
+        argv = [claude_path] + list(extra_args or [])
         try:
-            os.execv(claude_path, [claude_path])
+            os.execv(claude_path, argv)
         except OSError as e:
             # If execv fails, write error and exit child cleanly
             sys.stderr.write(f"execv failed: {e}\n")
@@ -476,6 +494,17 @@ async def handler(ws):
             await ws.send(json.dumps({"type": "state_snapshot", "states": bus.snapshot()}))
             await ws.send(json.dumps({"type": "permission_snapshot",
                                       "requests": bus.open_permissions()}))
+            # Pane metadata (role/cwd/branch) for preset-driven sessions
+            meta_payload = [
+                {
+                    "shell": i,
+                    "role": (pane_meta[i].get("role") if i < len(pane_meta) else "") or "",
+                    "cwd": (pane_meta[i].get("cwd") if i < len(pane_meta) else "") or "",
+                    "branch": (pane_meta[i].get("branch") if i < len(pane_meta) else "") or "",
+                }
+                for i in range(NUM_SHELLS)
+            ]
+            await ws.send(json.dumps({"type": "pane_meta", "panes": meta_payload}))
         except websockets.ConnectionClosed:
             clients.discard(ws)
             return
@@ -687,17 +716,84 @@ def graceful_shutdown():
             os.close(fd)
         except OSError:
             pass
+    # Prune worktrees created for this session
+    if worktree_repo and pane_meta:
+        for meta in pane_meta:
+            path = meta.get("cwd")
+            branch = meta.get("branch")
+            if path and path.startswith(worktree_mod.WORKTREES_ROOT):
+                worktree_mod.prune_worktree(worktree_repo, path)
+                if branch and branch.startswith("qm/"):
+                    worktree_mod.prune_branch(worktree_repo, branch)
 
 
 def main():
-    global NUM_SHELLS, shell_buffers, bus
+    global NUM_SHELLS, shell_buffers, bus, pane_meta, worktree_repo, worktree_session_id
 
     parser = argparse.ArgumentParser(description="QuadMux - Multi-pane Claude Code multiplexer")
     parser.add_argument("--shells", type=int, default=4, help="Number of Claude instances (default: 4)")
     parser.add_argument("--port", type=int, default=8766, help="WebSocket/HTTP port (default: 8766; 8765 is used by voicemode MCP)")
+    parser.add_argument("--preset", type=str, default=None,
+                        help=f"Role preset (one of: {', '.join(presets_mod.list_preset_names())}). "
+                             "Each role becomes one pane with its own system prompt.")
+    parser.add_argument("--repo", type=str, default=None,
+                        help="Path to a git repo. With --preset, each pane gets a worktree off this repo.")
+    parser.add_argument("--no-worktrees", action="store_true",
+                        help="With --preset, skip git worktrees and run all panes in --repo (or cwd).")
     args = parser.parse_args()
 
-    NUM_SHELLS = args.shells
+    # Resolve preset + worktrees first so NUM_SHELLS matches the preset size.
+    preset_roles = None
+    if args.preset:
+        preset_roles = presets_mod.get_preset(args.preset)
+        if preset_roles is None:
+            print(f"Error: unknown preset '{args.preset}'. "
+                  f"Available: {', '.join(presets_mod.list_preset_names())}", flush=True)
+            sys.exit(2)
+        NUM_SHELLS = len(preset_roles)
+        if args.shells != 4 and args.shells != NUM_SHELLS:
+            print(f"  Note: --shells={args.shells} overridden by preset size ({NUM_SHELLS})", flush=True)
+    else:
+        NUM_SHELLS = args.shells
+
+    pane_meta = [{} for _ in range(NUM_SHELLS)]
+
+    if preset_roles:
+        repo = args.repo or os.getcwd()
+        repo = os.path.abspath(os.path.expanduser(repo))
+        if args.no_worktrees:
+            for i, role in enumerate(preset_roles):
+                pane_meta[i] = {"role": role["name"], "cwd": repo,
+                                "branch": worktree_mod.current_branch(repo) or ""}
+        elif worktree_mod.is_git_repo(repo):
+            worktree_repo = repo
+            worktree_session_id = worktree_mod.make_session_id()
+            print(f"Creating {NUM_SHELLS} worktrees off {repo} "
+                  f"(session {worktree_session_id})...", flush=True)
+            created = worktree_mod.setup_session_worktrees(
+                repo, worktree_session_id, [r["name"] for r in preset_roles]
+            )
+            if len(created) != NUM_SHELLS:
+                print(f"  Worktree creation incomplete ({len(created)}/{NUM_SHELLS}). "
+                      "Falling back to running in --repo cwd.", flush=True)
+                for i, role in enumerate(preset_roles):
+                    pane_meta[i] = {"role": role["name"], "cwd": repo,
+                                    "branch": worktree_mod.current_branch(repo) or ""}
+                worktree_repo = None
+            else:
+                for i, (role, wt) in enumerate(zip(preset_roles, created)):
+                    pane_meta[i] = {"role": role["name"], "cwd": wt["path"],
+                                    "branch": wt["branch"]}
+                    print(f"  Pane {i+1}: {role['name']} -> {wt['path']}", flush=True)
+        else:
+            print(f"  --repo {repo} is not a git repo. Running roles in that cwd without worktrees.", flush=True)
+            for i, role in enumerate(preset_roles):
+                pane_meta[i] = {"role": role["name"], "cwd": repo, "branch": ""}
+
+        # Attach system prompts
+        for i, role in enumerate(preset_roles):
+            pane_meta[i]["system_prompt"] = role.get("system_prompt", "")
+
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()
     bus = StatusBus(NUM_SHELLS)
@@ -721,8 +817,12 @@ def main():
     for i in range(NUM_SHELLS):
         if i > 0:
             time.sleep(1.5)
+        meta = pane_meta[i] if i < len(pane_meta) else {}
+        cwd = meta.get("cwd") or None
+        sys_prompt = meta.get("system_prompt") or ""
+        extra_args = ["--append-system-prompt", sys_prompt] if sys_prompt else []
         try:
-            pid, master_fd = spawn_claude(claude_path, i)
+            pid, master_fd = spawn_claude(claude_path, i, cwd=cwd, extra_args=extra_args)
         except RuntimeError as e:
             print(f"Error: {e}", flush=True)
             for prev_pid in child_pids:
