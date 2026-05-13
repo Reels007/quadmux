@@ -52,6 +52,8 @@ except ImportError:
 
 import re
 
+from status_bus import StatusBus
+
 masters = []
 child_pids = []
 clients = set()
@@ -60,6 +62,8 @@ shell_buffers = []
 _save_lock = threading.Lock()
 MAX_BUFFER = 200
 NUM_SHELLS = 4
+bus = None  # initialised in main() once NUM_SHELLS is final
+BUS_TICK_INTERVAL = 1.0
 SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
 AUTOSAVE_INTERVAL = 30  # seconds
 
@@ -325,6 +329,12 @@ async def broadcast(idx, text):
     for ws in dead_clients:
         clients.discard(ws)
 
+    # Status bus: feed output to the detector and fan out state changes
+    if bus is not None:
+        new_state = bus.update(idx, text)
+        if new_state:
+            await _broadcast_state(idx, new_state)
+
     # Voice: accumulate output if capturing
     if voice_capturing.get(idx):
         voice_buffers[idx] = voice_buffers.get(idx, '') + text
@@ -340,6 +350,27 @@ async def broadcast(idx, text):
             if idx in voice_timers and voice_timers[idx]:
                 voice_timers[idx].cancel()
             voice_timers[idx] = loop.call_later(1.0, lambda i=idx: asyncio.ensure_future(voice_output_settled(i)))
+
+
+async def _broadcast_state(shell_idx, state, ts=None):
+    """Send a state change event to every connected client."""
+    msg = json.dumps({"type": "state", "shell": shell_idx,
+                      "state": state, "ts": ts or time.time()})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def bus_tick_loop():
+    """Periodically decay stale 'thinking'/'tool_running' states to 'idle'."""
+    while True:
+        await asyncio.sleep(BUS_TICK_INTERVAL)
+        if bus is None:
+            continue
+        for change in bus.tick():
+            await _broadcast_state(change["shell"], change["to"], change["ts"])
 
 
 async def broadcast_error(idx, text):
@@ -407,6 +438,13 @@ async def handler(ws):
             except websockets.ConnectionClosed:
                 clients.discard(ws)
                 return
+    # Send current per-pane state snapshot so the UI badges hydrate immediately
+    if bus is not None:
+        try:
+            await ws.send(json.dumps({"type": "state_snapshot", "states": bus.snapshot()}))
+        except websockets.ConnectionClosed:
+            clients.discard(ws)
+            return
     # Force redraw by toggling size
     for fd in masters:
         try:
@@ -546,6 +584,7 @@ async def serve(port):
     global loop
     loop = asyncio.get_running_loop()
     asyncio.create_task(autosave_loop())
+    asyncio.create_task(bus_tick_loop())
     print(f"QuadMux UI:  http://localhost:{port}", flush=True)
     print(f"WebSocket:   ws://localhost:{port}", flush=True)
     async with websockets.serve(handler, "localhost", port, process_request=http_handler,
@@ -597,7 +636,7 @@ def graceful_shutdown():
 
 
 def main():
-    global NUM_SHELLS, shell_buffers
+    global NUM_SHELLS, shell_buffers, bus
 
     parser = argparse.ArgumentParser(description="QuadMux - Multi-pane Claude Code multiplexer")
     parser.add_argument("--shells", type=int, default=4, help="Number of Claude instances (default: 4)")
@@ -607,6 +646,7 @@ def main():
     NUM_SHELLS = args.shells
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()
+    bus = StatusBus(NUM_SHELLS)
 
     # 1. Find claude
     claude_path = find_claude()

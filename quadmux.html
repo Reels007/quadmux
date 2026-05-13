@@ -187,6 +187,29 @@ body {
   }
   .shell-health.dead { background: #f87171; }
 
+  .shell-state {
+    font-size: 9px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background: #6b7280;
+    font-weight: 600;
+    user-select: none;
+  }
+  .shell-state[data-state="unknown"]              { background: #6b7280; }
+  .shell-state[data-state="idle"]                 { background: #475569; }
+  .shell-state[data-state="thinking"]             { background: #2563eb; animation: state-pulse 1.2s ease-in-out infinite; }
+  .shell-state[data-state="tool_running"]         { background: #d97706; }
+  .shell-state[data-state="awaiting_permission"]  { background: #dc2626; animation: state-pulse 0.8s ease-in-out infinite; }
+  .shell-state[data-state="errored"]              { background: #991b1b; }
+  @keyframes state-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+
   .shell-focus-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   .shell.active .shell-focus-dot { display: inline-block; }
 
@@ -593,6 +616,7 @@ body {
         <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-0"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-0"></span>
+        <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
         <span class="shell-health" id="health-0" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -615,6 +639,7 @@ body {
         <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-1"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-1"></span>
+        <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
         <span class="shell-health" id="health-1" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -637,6 +662,7 @@ body {
         <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-2"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-2"></span>
+        <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
         <span class="shell-health" id="health-2" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -657,6 +683,7 @@ body {
         <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-3"></span></span></button>
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-3"></span>
+        <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
         <span class="shell-health" id="health-3" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1271,8 +1298,30 @@ function connect() {
     } else if (data.type === 'health') {
       shellAlive = data.alive;
       updateHealth();
+    } else if (data.type === 'state') {
+      applyState(data.shell, data.state);
+    } else if (data.type === 'state_snapshot') {
+      (data.states || []).forEach(s => applyState(s.shell, s.state));
     }
   };
+}
+
+// Per-pane agent state badge (status bus)
+const STATE_LABELS = {
+  unknown: 'idle',
+  idle: 'idle',
+  thinking: 'thinking',
+  tool_running: 'tool',
+  awaiting_permission: 'perm?',
+  errored: 'error',
+};
+function applyState(shellIdx, state) {
+  const el = document.getElementById(`state-${shellIdx}`);
+  if (!el) return;
+  const known = STATE_LABELS[state] ? state : 'unknown';
+  el.dataset.state = known;
+  el.textContent = STATE_LABELS[known];
+  el.title = `agent state: ${known}`;
 }
 
 setInterval(() => {
