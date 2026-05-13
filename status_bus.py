@@ -38,19 +38,26 @@ IDLE_AFTER_SECONDS = 2.0  # decay to idle after this much quiet time with a visi
 def extract_permission_question(text: str) -> str:
     """Pull the question line from a Claude Code permission prompt block.
 
-    Strips ANSI + box-drawing, finds the line containing 'Do you want',
-    and returns up to ~140 chars of it. Returns '' if nothing usable.
+    Strips ANSI + box-drawing, then scans the tail in priority order:
+        1. lines containing 'do you want'
+        2. lines containing 'allow' / 'approve' / 'permission'
+        3. lines containing '[y/n]' / '(y/n)'
+    Returns up to ~140 chars, or '' if nothing usable.
     """
     clean = BOX_RE.sub(' ', ANSI_RE.sub('', text))
     lines = [ln.strip() for ln in clean.split('\n') if ln.strip()]
-    # Look at the last ~30 lines (the prompt is always at the tail)
-    for ln in reversed(lines[-30:]):
-        if 'do you want' in ln.lower() or '[y/n]' in ln.lower() or '(y/n)' in ln.lower():
+    tail = lines[-30:]
+
+    for ln in reversed(tail):
+        if 'do you want' in ln.lower():
             return ln[:140]
-    # Fallback: first line containing 'Allow' or 'Approve'
-    for ln in reversed(lines[-30:]):
+    for ln in reversed(tail):
         low = ln.lower()
         if 'allow' in low or 'approve' in low or 'permission' in low:
+            return ln[:140]
+    for ln in reversed(tail):
+        low = ln.lower()
+        if '[y/n]' in low or '(y/n)' in low:
             return ln[:140]
     return ''
 
