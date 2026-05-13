@@ -21,6 +21,7 @@ BUS_LOG = os.path.expanduser("~/.quadmux/bus.jsonl")
 BUS_LOG_MAX_BYTES = 50 * 1024 * 1024  # 50 MB cap
 
 ANSI_RE = re.compile(r'\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])')
+BOX_RE = re.compile(r'[─│┌┐└┘├┤┬┴┼╭╮╯╰▓░▒█]')
 
 SPINNER_CHARS = set("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 TOOL_RE = re.compile(r'●\s*(Read|Write|Edit|Bash|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite)\s*\(')
@@ -32,6 +33,26 @@ ERROR_RE = re.compile(r'(?:^|\s)(Error:|Traceback|✗\s|failed:)', re.IGNORECASE
 PROMPT_TAIL_RE = re.compile(r'[❯>]\s*$')
 
 IDLE_AFTER_SECONDS = 2.0  # decay to idle after this much quiet time with a visible prompt
+
+
+def extract_permission_question(text: str) -> str:
+    """Pull the question line from a Claude Code permission prompt block.
+
+    Strips ANSI + box-drawing, finds the line containing 'Do you want',
+    and returns up to ~140 chars of it. Returns '' if nothing usable.
+    """
+    clean = BOX_RE.sub(' ', ANSI_RE.sub('', text))
+    lines = [ln.strip() for ln in clean.split('\n') if ln.strip()]
+    # Look at the last ~30 lines (the prompt is always at the tail)
+    for ln in reversed(lines[-30:]):
+        if 'do you want' in ln.lower() or '[y/n]' in ln.lower() or '(y/n)' in ln.lower():
+            return ln[:140]
+    # Fallback: first line containing 'Allow' or 'Approve'
+    for ln in reversed(lines[-30:]):
+        low = ln.lower()
+        if 'allow' in low or 'approve' in low or 'permission' in low:
+            return ln[:140]
+    return ''
 
 
 def _clean(text: str) -> str:
@@ -72,8 +93,39 @@ class StatusBus:
         self.states = ["unknown"] * num_shells
         self.last_activity = [0.0] * num_shells
         self.last_prompt_seen = [0.0] * num_shells
+        self.permissions = [None] * num_shells  # current open request per shell: dict or None
+        self._next_request_id = 1
         self.subscribers = []  # list of async callables: (event_dict) -> coroutine
         os.makedirs(os.path.dirname(BUS_LOG), exist_ok=True)
+
+    def open_permission(self, shell_idx: int, question: str) -> dict:
+        """Record a new pending permission request and return it."""
+        req = {
+            "id": self._next_request_id,
+            "shell": shell_idx,
+            "question": question or "Permission requested",
+            "ts": time.time(),
+        }
+        self._next_request_id += 1
+        self.permissions[shell_idx] = req
+        self._log({"type": "permission_request", **req})
+        return req
+
+    def close_permission(self, shell_idx: int, reason: str = "resolved"):
+        """Close any open permission request for this shell. Returns the closed
+        request dict, or None if none was open."""
+        if not (0 <= shell_idx < self.num_shells):
+            return None
+        req = self.permissions[shell_idx]
+        if req is None:
+            return None
+        self.permissions[shell_idx] = None
+        self._log({"type": "permission_resolved", "id": req["id"],
+                   "shell": shell_idx, "reason": reason, "ts": time.time()})
+        return req
+
+    def open_permissions(self) -> list:
+        return [p for p in self.permissions if p is not None]
 
     def subscribe(self, fn):
         self.subscribers.append(fn)

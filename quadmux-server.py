@@ -331,9 +331,22 @@ async def broadcast(idx, text):
 
     # Status bus: feed output to the detector and fan out state changes
     if bus is not None:
+        prior_state = bus.states[idx]
         new_state = bus.update(idx, text)
         if new_state:
             await _broadcast_state(idx, new_state)
+            # Open or close a permission request on the appropriate transition
+            if new_state == "awaiting_permission" and prior_state != "awaiting_permission":
+                from status_bus import extract_permission_question
+                question = extract_permission_question(
+                    "".join(shell_buffers[idx][-8:]) + text
+                )
+                req = bus.open_permission(idx, question)
+                await _broadcast_permission_request(req)
+            elif prior_state == "awaiting_permission" and new_state != "awaiting_permission":
+                req = bus.close_permission(idx, reason="state_change")
+                if req:
+                    await _broadcast_permission_resolved(req["id"], idx, "state_change")
 
     # Voice: accumulate output if capturing
     if voice_capturing.get(idx):
@@ -356,6 +369,25 @@ async def _broadcast_state(shell_idx, state, ts=None):
     """Send a state change event to every connected client."""
     msg = json.dumps({"type": "state", "shell": shell_idx,
                       "state": state, "ts": ts or time.time()})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def _broadcast_permission_request(req):
+    msg = json.dumps({"type": "permission_request", **req})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def _broadcast_permission_resolved(req_id, shell_idx, reason):
+    msg = json.dumps({"type": "permission_resolved", "id": req_id,
+                      "shell": shell_idx, "reason": reason, "ts": time.time()})
     for ws in clients.copy():
         try:
             await ws.send(msg)
@@ -442,6 +474,8 @@ async def handler(ws):
     if bus is not None:
         try:
             await ws.send(json.dumps({"type": "state_snapshot", "states": bus.snapshot()}))
+            await ws.send(json.dumps({"type": "permission_snapshot",
+                                      "requests": bus.open_permissions()}))
         except websockets.ConnectionClosed:
             clients.discard(ws)
             return
@@ -503,6 +537,26 @@ async def handler(ws):
                 except OSError as e:
                     await ws.send(json.dumps({"type": "upload_error", "shell": idx,
                                               "filename": filename, "error": str(e)}))
+            elif msg_type == "permission_response":
+                # Resolve a pending permission request by sending y/n to the right pane.
+                idx = data.get("shell")
+                req_id = data.get("id")
+                answer = data.get("answer")  # "allow" or "deny"
+                if idx is None or not (0 <= idx < NUM_SHELLS):
+                    continue
+                if answer not in ("allow", "deny"):
+                    continue
+                key = "y" if answer == "allow" else "n"
+                try:
+                    os.write(masters[idx], key.encode())
+                    print(f"  Perm: shell {idx} req {req_id} -> {answer}", flush=True)
+                except (OSError, IndexError) as e:
+                    print(f"  Perm write error shell {idx}: {e}", flush=True)
+                    continue
+                if bus is not None:
+                    closed = bus.close_permission(idx, reason=answer)
+                    if closed:
+                        await _broadcast_permission_resolved(closed["id"], idx, answer)
             elif msg_type == "voice_start":
                 voice_shell = data.get("shell", -1)
                 print(f"  Voice active on pane {voice_shell + 1}", flush=True)

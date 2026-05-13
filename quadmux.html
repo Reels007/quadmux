@@ -603,9 +603,101 @@ body {
     #shell-3 { grid-row: 4 !important; }
     .input-bar { max-width: 100%; }
   }
+
+  /* Permission aggregator tray */
+  .perm-tray {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: #111827;
+    color: #f3f4f6;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+    font-size: 12px;
+    display: none;
+  }
+  .perm-tray.visible { display: block; }
+  .perm-tray-header {
+    padding: 8px 10px;
+    border-bottom: 1px solid #374151;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0f172a;
+    border-radius: 8px 8px 0 0;
+  }
+  .perm-tray-title {
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: #fca5a5;
+  }
+  .perm-tray-count {
+    background: #dc2626;
+    color: #fff;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .perm-item {
+    padding: 10px;
+    border-bottom: 1px solid #1f2937;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .perm-item:last-child { border-bottom: none; }
+  .perm-item-pane {
+    font-size: 10px;
+    color: #fca5a5;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .perm-item-q {
+    color: #f3f4f6;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  .perm-item-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .perm-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .perm-btn.allow { background: #16a34a; color: #fff; }
+  .perm-btn.allow:hover { background: #15803d; }
+  .perm-btn.deny  { background: #dc2626; color: #fff; }
+  .perm-btn.deny:hover  { background: #b91c1c; }
+  .perm-btn.focus { background: #475569; color: #fff; }
+  .perm-btn.focus:hover { background: #334155; }
 </style>
 </head>
 <body>
+
+<div class="perm-tray" id="perm-tray" role="region" aria-label="Pending permission requests">
+  <div class="perm-tray-header">
+    <span class="perm-tray-title">Permission requests</span>
+    <span class="perm-tray-count" id="perm-tray-count">0</span>
+  </div>
+  <div id="perm-tray-list"></div>
+</div>
 
 <div class="grid" id="grid">
   <div class="shell s1" id="shell-0" style="grid-column:1;grid-row:1;">
@@ -1302,6 +1394,14 @@ function connect() {
       applyState(data.shell, data.state);
     } else if (data.type === 'state_snapshot') {
       (data.states || []).forEach(s => applyState(s.shell, s.state));
+    } else if (data.type === 'permission_request') {
+      addPermissionRequest(data);
+    } else if (data.type === 'permission_resolved') {
+      removePermissionRequest(data.id);
+    } else if (data.type === 'permission_snapshot') {
+      pendingPermissions.clear();
+      (data.requests || []).forEach(r => pendingPermissions.set(r.id, r));
+      renderPermTray();
     }
   };
 }
@@ -1322,6 +1422,79 @@ function applyState(shellIdx, state) {
   el.dataset.state = known;
   el.textContent = STATE_LABELS[known];
   el.title = `agent state: ${known}`;
+}
+
+// --- Permission aggregator tray ---
+const pendingPermissions = new Map(); // id -> {id, shell, question, ts}
+const permTray = document.getElementById('perm-tray');
+const permTrayList = document.getElementById('perm-tray-list');
+const permTrayCount = document.getElementById('perm-tray-count');
+
+function renderPermTray() {
+  while (permTrayList.firstChild) permTrayList.removeChild(permTrayList.firstChild);
+  const items = Array.from(pendingPermissions.values()).sort((a, b) => a.ts - b.ts);
+  permTrayCount.textContent = items.length;
+  permTray.classList.toggle('visible', items.length > 0);
+  for (const r of items) {
+    const item = document.createElement('div');
+    item.className = 'perm-item';
+    item.dataset.id = r.id;
+
+    const pane = document.createElement('div');
+    pane.className = 'perm-item-pane';
+    pane.textContent = `Pane ${r.shell + 1}`;
+    item.appendChild(pane);
+
+    const q = document.createElement('div');
+    q.className = 'perm-item-q';
+    q.textContent = r.question || 'Permission requested';
+    item.appendChild(q);
+
+    const actions = document.createElement('div');
+    actions.className = 'perm-item-actions';
+    [
+      { action: 'allow', label: 'Allow', cls: 'allow' },
+      { action: 'deny',  label: 'Deny',  cls: 'deny'  },
+      { action: 'focus', label: 'Focus', cls: 'focus' },
+    ].forEach(({ action, label, cls }) => {
+      const btn = document.createElement('button');
+      btn.className = `perm-btn ${cls}`;
+      btn.dataset.action = action;
+      btn.textContent = label;
+      btn.addEventListener('click', () => respondToPermission(r, action));
+      actions.appendChild(btn);
+    });
+    item.appendChild(actions);
+
+    permTrayList.appendChild(item);
+  }
+}
+
+function addPermissionRequest(req) {
+  pendingPermissions.set(req.id, req);
+  renderPermTray();
+}
+
+function removePermissionRequest(id) {
+  if (pendingPermissions.delete(id)) renderPermTray();
+}
+
+function respondToPermission(req, action) {
+  if (action === 'focus') {
+    setActiveShell(req.shell);
+    return;
+  }
+  if (action !== 'allow' && action !== 'deny') return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'permission_response',
+      id: req.id,
+      shell: req.shell,
+      answer: action,
+    }));
+  }
+  // Optimistically remove; server will also send permission_resolved
+  removePermissionRequest(req.id);
 }
 
 setInterval(() => {
