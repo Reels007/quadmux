@@ -59,24 +59,14 @@ def _encoded_cwd(cwd: str) -> str:
     return os.path.abspath(cwd).replace("/", "-")
 
 
-def session_files_for_cwd(cwd: str) -> List[str]:
-    """Return absolute paths of session JSONLs whose top-level ``cwd`` matches.
-
-    Sorted newest first (by mtime).
-    """
-    if not cwd:
-        return []
-    target = os.path.abspath(cwd)
-    enc = _encoded_cwd(target)
-    proj_dir = os.path.join(PROJECTS_DIR, enc)
+def _scan_jsonl_files(proj_dir: str, target: str):
+    """Yield (mtime, path) for every .jsonl in proj_dir whose first-line cwd matches."""
     if not os.path.isdir(proj_dir):
-        return []
-    files = []
+        return
     for name in os.listdir(proj_dir):
         if not name.endswith(".jsonl"):
             continue
         full = os.path.join(proj_dir, name)
-        # Sanity-check: read first line, confirm cwd matches if the field is present
         try:
             with open(full, encoding="utf-8", errors="replace") as f:
                 first = f.readline()
@@ -85,17 +75,42 @@ def session_files_for_cwd(cwd: str) -> List[str]:
         if not first.strip():
             continue
         try:
-            obj = json.loads(first)
-            sess_cwd = obj.get("cwd")
-            if sess_cwd and os.path.abspath(sess_cwd) != target:
-                continue
+            sess_cwd = json.loads(first).get("cwd")
         except (json.JSONDecodeError, AttributeError):
-            pass  # accept files where the first line lacks cwd
+            sess_cwd = None
+        if sess_cwd and os.path.abspath(sess_cwd) != target:
+            continue
+        if not sess_cwd:
+            # File has no cwd in its first line; only accept if we already
+            # know we're scanning the right dir (caller's responsibility).
+            continue
         try:
             mtime = os.path.getmtime(full)
         except OSError:
             continue
-        files.append((mtime, full))
+        yield (mtime, full)
+
+
+def session_files_for_cwd(cwd: str) -> List[str]:
+    """Return absolute paths of session JSONLs whose top-level ``cwd`` matches.
+
+    Sorted newest first (by mtime). Robust to Claude's encoding of special
+    characters in path names: if the simple ``/`` → ``-`` rewrite misses, we
+    fall back to scanning every project subdir.
+    """
+    if not cwd:
+        return []
+    target = os.path.abspath(cwd)
+    enc = _encoded_cwd(target)
+    fast_dir = os.path.join(PROJECTS_DIR, enc)
+    files = list(_scan_jsonl_files(fast_dir, target))
+    if not files and os.path.isdir(PROJECTS_DIR):
+        # Fall back: paths with spaces/special chars get encoded differently.
+        for sub in os.listdir(PROJECTS_DIR):
+            sub_path = os.path.join(PROJECTS_DIR, sub)
+            if sub_path == fast_dir or not os.path.isdir(sub_path):
+                continue
+            files.extend(_scan_jsonl_files(sub_path, target))
     files.sort(reverse=True)
     return [f[1] for f in files]
 

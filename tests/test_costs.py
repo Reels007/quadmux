@@ -152,3 +152,25 @@ def test_cost_tracker_missing_path_is_inert():
     snap = t.snapshot()
     assert snap["total_tokens"] == 0
     assert snap["cost"] == 0.0
+
+
+def test_session_files_fallback_when_encoding_differs(tmp_path, monkeypatch):
+    """Paths with spaces / special chars don't get a simple '/' -> '-' encoding.
+    We should still find the session via a fallback scan."""
+    cwd = "/tmp/qm has spaces & punct"
+    # Claude actually encodes spaces/special chars as multiple dashes;
+    # simulate that with a deliberately different dir name.
+    proj = tmp_path / "projects"
+    weird_dir = proj / "-tmp-qm-has-spaces---punct"
+    weird_dir.mkdir(parents=True)
+    f = weird_dir / "session.jsonl"
+    f.write_text(json.dumps({
+        "cwd": cwd,
+        "message": {"model": "claude-opus-4-7",
+                    "usage": {"input_tokens": 1, "output_tokens": 1}},
+    }) + "\n")
+    monkeypatch.setattr(costs, "PROJECTS_DIR", str(proj))
+
+    files = costs.session_files_for_cwd(cwd)
+    assert len(files) == 1
+    assert files[0] == str(f)

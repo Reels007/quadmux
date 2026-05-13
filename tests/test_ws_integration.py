@@ -44,7 +44,8 @@ class FakeWS:
         return self.incoming.pop(0)
 
 
-def _setup_server(qm, num_shells, monkeypatch, parked_path):
+def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
+                  cost_trackers=None):
     qm.NUM_SHELLS = num_shells
     qm.shell_buffers = [[] for _ in range(num_shells)]
     qm.pane_meta = [{} for _ in range(num_shells)]
@@ -52,7 +53,10 @@ def _setup_server(qm, num_shells, monkeypatch, parked_path):
     qm.child_pids = []
     qm.clients = set()
     qm.bus = qm.StatusBus(num_shells)
+    qm.cost_trackers = cost_trackers if cost_trackers is not None else []
     monkeypatch.setattr(qm.parked_mod, "PARKED_PATH", str(parked_path))
+    if bus_log is not None:
+        monkeypatch.setattr(qm.activity_mod, "BUS_LOG", str(bus_log))
 
 
 def test_handoff_writes_to_target_pty(qm, tmp_path, monkeypatch):
@@ -194,9 +198,59 @@ def test_initial_connect_sends_snapshots(qm, tmp_path, monkeypatch):
         except json.JSONDecodeError:
             pass
     for required in ("hello", "state_snapshot", "permission_snapshot",
-                     "pane_meta", "parked_list"):
+                     "pane_meta", "parked_list", "cost_snapshot"):
         assert required in types_sent, f"missing {required} on connect"
 
     # parked_list payload contains the seeded task
     parked_list_msg = next(s for s in ws.sent if '"parked_list"' in s)
     assert "Pre-existing" in parked_list_msg
+
+
+def test_activity_request_returns_filtered_events(qm, tmp_path, monkeypatch):
+    bus_log = tmp_path / "bus.jsonl"
+    bus_log.write_text("\n".join([
+        json.dumps({"type": "state", "shell": 0, "from": "idle", "to": "thinking", "ts": 1.0}),
+        json.dumps({"type": "state", "shell": 1, "from": "idle", "to": "thinking", "ts": 2.0}),
+        json.dumps({"type": "handoff", "source": 0, "target": 1, "ts": 3.0}),
+        json.dumps({"type": "permission_request", "id": 1, "shell": 0, "ts": 4.0}),
+    ]) + "\n")
+    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json", bus_log=bus_log)
+
+    msg = json.dumps({"type": "activity_request", "limit": 50,
+                      "types": ["state", "handoff"]})
+    ws = FakeWS([msg])
+    asyncio.run(qm.handler(ws))
+
+    responses = [json.loads(s) for s in ws.sent
+                 if '"activity_response"' in s]
+    assert responses
+    events = responses[0]["events"]
+    types_seen = {e["type"] for e in events}
+    assert types_seen == {"state", "handoff"}
+    # newest-first ordering
+    assert events[0]["ts"] >= events[-1]["ts"]
+
+
+def test_cost_snapshot_reflects_tracker_totals(qm, tmp_path, monkeypatch):
+    # Build a fake session JSONL the tracker can read
+    session = tmp_path / "session.jsonl"
+    session.write_text(json.dumps({
+        "message": {"model": "claude-opus-4-7",
+                    "usage": {"input_tokens": 200, "output_tokens": 100}}
+    }) + "\n")
+    tracker = qm.costs_mod.CostTracker(str(session))
+    tracker.poll()  # pull the line into the tracker
+
+    _setup_server(qm, 1, monkeypatch, tmp_path / "parked.json",
+                  cost_trackers=[tracker])
+
+    ws = FakeWS([])
+    asyncio.run(qm.handler(ws))
+    cost_msgs = [json.loads(s) for s in ws.sent
+                 if '"cost_snapshot"' in s]
+    assert cost_msgs
+    payload = cost_msgs[0]
+    assert payload["panes"][0]["tokens"]["input"] == 200
+    assert payload["panes"][0]["tokens"]["output"] == 100
+    assert payload["total_tokens"] == 300
+    assert payload["total_cost"] > 0
