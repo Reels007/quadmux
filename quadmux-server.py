@@ -58,6 +58,7 @@ import worktree as worktree_mod
 import parked as parked_mod
 import costs as costs_mod
 import activity_log as activity_mod
+import sessions as sessions_mod
 
 masters = []
 child_pids = []
@@ -81,6 +82,11 @@ COST_POLL_INTERVAL = 5.0  # seconds
 SESSION_LOOKUP_RETRY_INTERVAL = 8.0  # seconds before re-scanning for missing session files
 SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
 AUTOSAVE_INTERVAL = 30  # seconds
+
+# Phase 6: current session id and the per-run subdirectory we write to.
+session_id: str = ""
+session_dir: str = ""
+session_started_at: float = 0.0
 
 # --- Voice response extraction (server-side) ---
 ANSI_RE = re.compile(r'\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])')
@@ -185,11 +191,12 @@ async def voice_output_settled(shell_idx):
 
 
 def save_session():
-    """Save shell buffers and pane metadata to disk."""
+    """Save shell buffers to the current session's archive dir."""
+    target = session_dir or SESSION_DIR
     with _save_lock:
-        os.makedirs(SESSION_DIR, exist_ok=True)
+        os.makedirs(target, exist_ok=True)
         for idx in range(NUM_SHELLS):
-            path = os.path.join(SESSION_DIR, f"shell_{idx}.json")
+            path = os.path.join(target, f"shell_{idx}.json")
             tmp_path = path + ".tmp"
             try:
                 with open(tmp_path, "w") as f:
@@ -199,35 +206,42 @@ def save_session():
                 os.replace(tmp_path, path)
             except (OSError, TypeError) as e:
                 print(f"  Save error shell {idx}: {e}", flush=True)
-                # Clean up temp file on failure
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-        print(f"  Session saved ({NUM_SHELLS} shells)", flush=True)
+        print(f"  Session saved -> {os.path.basename(target)} ({NUM_SHELLS} shells)", flush=True)
 
 
 def load_session():
-    """Load previous shell buffers from disk if available."""
+    """Load buffers from the most recent previous session for continuity."""
     loaded = [[] for _ in range(NUM_SHELLS)]
-    if not os.path.isdir(SESSION_DIR):
+    prev = sessions_mod.previous_session_dir(skip_id=session_id or None)
+    if not prev:
+        # Fallback for legacy flat layout (pre-phase-6)
+        legacy_files = [os.path.join(SESSION_DIR, f"shell_{i}.json")
+                        for i in range(NUM_SHELLS)]
+        if any(os.path.exists(p) for p in legacy_files):
+            prev = SESSION_DIR
+    if not prev:
         return loaded
     for idx in range(NUM_SHELLS):
-        path = os.path.join(SESSION_DIR, f"shell_{idx}.json")
-        if os.path.exists(path):
-            try:
-                with open(path) as f:
-                    raw = f.read()
-                if not raw.strip():
-                    print(f"  Load warning shell {idx}: empty file, skipping", flush=True)
-                    continue
-                data = json.loads(raw)
-                loaded[idx] = data.get("buffer", [])
-                saved = data.get("saved_at", 0)
-                age = time.time() - saved
-                print(f"  Loaded shell {idx}: {len(loaded[idx])} chunks ({age:.0f}s old)", flush=True)
-            except (json.JSONDecodeError, OSError, KeyError, ValueError) as e:
-                print(f"  Load error shell {idx}: {e}", flush=True)
+        path = os.path.join(prev, f"shell_{idx}.json")
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path) as f:
+                raw = f.read()
+            if not raw.strip():
+                continue
+            data = json.loads(raw)
+            loaded[idx] = data.get("buffer", [])
+            saved = data.get("saved_at", 0)
+            age = time.time() - saved
+            print(f"  Loaded shell {idx} from {os.path.basename(prev)} "
+                  f"({len(loaded[idx])} chunks, {age:.0f}s old)", flush=True)
+        except (json.JSONDecodeError, OSError, KeyError, ValueError) as e:
+            print(f"  Load error shell {idx}: {e}", flush=True)
     return loaded
 
 
@@ -696,6 +710,27 @@ async def handler(ws):
                 except OSError as e:
                     await ws.send(json.dumps({"type": "upload_error", "shell": idx,
                                               "filename": filename, "error": str(e)}))
+            elif msg_type == "session_list":
+                try:
+                    items = sessions_mod.list_sessions()
+                except OSError:
+                    items = []
+                await ws.send(json.dumps({"type": "session_list",
+                                          "sessions": items,
+                                          "current": session_id}))
+            elif msg_type == "session_replay":
+                sid = data.get("id") or ""
+                if not isinstance(sid, str) or not sid:
+                    continue
+                # Cap buffer payload size so big archives don't blow the socket.
+                replay = sessions_mod.load_replay(sid, NUM_SHELLS)
+                if replay.get("buffers"):
+                    capped = []
+                    for buf in replay["buffers"]:
+                        joined = "".join(buf)[-200_000:]  # last ~200KB per pane
+                        capped.append(joined)
+                    replay["buffers"] = capped
+                await ws.send(json.dumps({"type": "session_replay", **replay}))
             elif msg_type == "activity_request":
                 limit = data.get("limit") or 200
                 shell_filter = data.get("shell")
@@ -882,6 +917,12 @@ async def serve(port):
 def graceful_shutdown():
     """Clean shutdown: save session, terminate children, close FDs, reap zombies."""
     save_session()
+    # Mark this session's archive as ended.
+    if session_dir:
+        try:
+            sessions_mod.update_meta(session_dir, ended_at=time.time())
+        except OSError:
+            pass
     # SIGTERM children
     for pid in child_pids:
         try:
@@ -933,6 +974,7 @@ def graceful_shutdown():
 
 def main():
     global NUM_SHELLS, shell_buffers, bus, pane_meta, worktree_repo, worktree_session_id
+    global session_id, session_dir, session_started_at
 
     parser = argparse.ArgumentParser(description="QuadMux - Multi-pane Claude Code multiplexer")
     parser.add_argument("--shells", type=int, default=4, help="Number of Claude instances (default: 4)")
@@ -997,6 +1039,20 @@ def main():
         # Attach system prompts
         for i, role in enumerate(preset_roles):
             pane_meta[i]["system_prompt"] = role.get("system_prompt", "")
+
+    # Phase 6: open a fresh archive dir for this run BEFORE loading buffers,
+    # so load_session() picks the most recent *previous* session.
+    session_id = sessions_mod.make_session_id()
+    session_dir = sessions_mod.session_path(session_id)
+    session_started_at = time.time()
+    os.makedirs(session_dir, exist_ok=True)
+    sessions_mod.write_meta(session_dir, {
+        "started_at": session_started_at,
+        "pane_count": NUM_SHELLS,
+        "preset": args.preset,
+        "repo": args.repo,
+        "pane_meta": pane_meta,
+    })
 
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()

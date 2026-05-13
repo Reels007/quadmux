@@ -45,7 +45,7 @@ class FakeWS:
 
 
 def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
-                  cost_trackers=None):
+                  cost_trackers=None, sessions_root=None):
     qm.NUM_SHELLS = num_shells
     qm.shell_buffers = [[] for _ in range(num_shells)]
     qm.pane_meta = [{} for _ in range(num_shells)]
@@ -54,9 +54,15 @@ def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
     qm.clients = set()
     qm.bus = qm.StatusBus(num_shells)
     qm.cost_trackers = cost_trackers if cost_trackers is not None else []
+    qm.session_id = ""
+    qm.session_dir = ""
     monkeypatch.setattr(qm.parked_mod, "PARKED_PATH", str(parked_path))
     if bus_log is not None:
         monkeypatch.setattr(qm.activity_mod, "BUS_LOG", str(bus_log))
+        import status_bus as _sb
+        monkeypatch.setattr(_sb, "BUS_LOG", str(bus_log))
+    if sessions_root is not None:
+        monkeypatch.setattr(qm.sessions_mod, "SESSIONS_ROOT", str(sessions_root))
 
 
 def test_handoff_writes_to_target_pty(qm, tmp_path, monkeypatch):
@@ -229,6 +235,48 @@ def test_activity_request_returns_filtered_events(qm, tmp_path, monkeypatch):
     assert types_seen == {"state", "handoff"}
     # newest-first ordering
     assert events[0]["ts"] >= events[-1]["ts"]
+
+
+def test_session_list_and_replay_via_ws(qm, tmp_path, monkeypatch):
+    sessions_root = tmp_path / "sessions"
+    bus_log = tmp_path / "bus.jsonl"
+    # Seed bus log with an in-window event
+    bus_log.write_text(json.dumps({"type": "state", "ts": 1500.0,
+                                    "shell": 0, "to": "thinking"}) + "\n")
+    # Seed a past session dir
+    sess_dir = sessions_root / "20260513-091500"
+    sess_dir.mkdir(parents=True)
+    (sess_dir / "meta.json").write_text(json.dumps({
+        "started_at": 1000.0, "ended_at": 2000.0, "pane_count": 2,
+        "preset": "review-loop"
+    }))
+    (sess_dir / "shell_0.json").write_text(json.dumps(
+        {"buffer": ["hello", " world"]}))
+
+    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json",
+                  bus_log=bus_log, sessions_root=sessions_root)
+
+    msgs = [
+        json.dumps({"type": "session_list"}),
+        json.dumps({"type": "session_replay", "id": "20260513-091500"}),
+    ]
+    ws = FakeWS(msgs)
+    asyncio.run(qm.handler(ws))
+
+    # session_list response
+    listings = [json.loads(s) for s in ws.sent if '"session_list"' in s]
+    # the connect path doesn't send a list, so the only entry is the response
+    assert any(l.get("sessions") for l in listings)
+    payload = next(l for l in listings if l.get("sessions"))
+    ids = [s["id"] for s in payload["sessions"]]
+    assert "20260513-091500" in ids
+
+    # session_replay response
+    replays = [json.loads(s) for s in ws.sent if '"session_replay"' in s]
+    assert replays and replays[0]["found"] is True
+    assert "hello" in replays[0]["buffers"][0]
+    # event in the time window made it in
+    assert any(e["type"] == "state" for e in replays[0]["events"])
 
 
 def test_cost_snapshot_reflects_tracker_totals(qm, tmp_path, monkeypatch):

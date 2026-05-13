@@ -604,6 +604,103 @@ body {
     .input-bar { max-width: 100%; }
   }
 
+  /* Phase 6: replay modal */
+  .qm-modal {
+    position: fixed; inset: 0; z-index: 2000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qm-modal-back {
+    position: absolute; inset: 0;
+    background: rgba(2, 6, 23, 0.6);
+  }
+  .qm-modal-panel {
+    position: relative;
+    width: min(900px, 92vw);
+    max-height: 86vh;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    border: 1px solid #1f2937;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  }
+  .qm-modal-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid #1f2937;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0b1220;
+  }
+  .qm-modal-head h3 {
+    margin: 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #38bdf8;
+  }
+  .qm-modal-head button {
+    background: transparent;
+    border: 0;
+    color: #cbd5e1;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+  }
+  .qm-modal-body {
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .qm-session-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: #111c2f;
+    border: 1px solid #1f2937;
+    border-radius: 5px;
+    margin-bottom: 6px;
+  }
+  .qm-session-row .meta {
+    color: #94a3b8;
+    font-size: 10px;
+  }
+  .qm-session-row button {
+    background: #2563eb;
+    border: 0;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .qm-session-row.current { border-color: #38bdf8; }
+  .qm-session-row.current .meta::before { content: 'current · '; color: #38bdf8; }
+  .qm-replay-pane {
+    background: #020617;
+    border: 1px solid #1f2937;
+    border-radius: 5px;
+    padding: 8px;
+    margin-bottom: 10px;
+    max-height: 240px;
+    overflow: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #e2e8f0;
+  }
+  .qm-replay-pane h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    color: #38bdf8;
+  }
+
   /* Phase 5: cost chip + global total + activity panel */
   .shell-cost {
     font-size: 9px;
@@ -1075,7 +1172,7 @@ body {
 
 <aside class="activity-side" id="activity-side" role="region" aria-label="Activity log">
   <div class="activity-head">
-    <h3>Activity log</h3>
+    <h3>Activity log <button id="open-sessions" title="Past sessions" style="float:right;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer">History</button></h3>
     <div class="activity-filters" id="activity-filters">
       <button class="activity-filter active" data-filter="all">All</button>
       <button class="activity-filter" data-filter="state">States</button>
@@ -1085,6 +1182,17 @@ body {
   </div>
   <div class="activity-body" id="activity-body"></div>
 </aside>
+
+<div class="qm-modal" id="qm-modal" role="dialog" aria-modal="true" style="display:none;">
+  <div class="qm-modal-back" id="qm-modal-back"></div>
+  <div class="qm-modal-panel">
+    <div class="qm-modal-head">
+      <h3 id="qm-modal-title">Past sessions</h3>
+      <button id="qm-modal-close">×</button>
+    </div>
+    <div class="qm-modal-body" id="qm-modal-body"></div>
+  </div>
+</div>
 
 <div class="global-cost" id="global-cost" title="Total tokens across all panes (server polls every 5s)">
   <span class="label">Total</span><span id="global-cost-text">0 tok · $0.00</span>
@@ -1846,6 +1954,10 @@ function connect() {
       applyCostSnapshot(data);
     } else if (data.type === 'activity_response') {
       renderActivity(data.events || []);
+    } else if (data.type === 'session_list') {
+      renderSessionList(data.sessions || [], data.current || '');
+    } else if (data.type === 'session_replay') {
+      renderReplay(data);
     }
   };
 }
@@ -1974,6 +2086,145 @@ function refreshActivityIfOpen() {
   if (activitySide.classList.contains('open')) requestActivity();
 }
 
+// --- Phase 6: session replay modal ---
+const qmModal = document.getElementById('qm-modal');
+const qmModalTitle = document.getElementById('qm-modal-title');
+const qmModalBody = document.getElementById('qm-modal-body');
+document.getElementById('qm-modal-close').addEventListener('click', closeModal);
+document.getElementById('qm-modal-back').addEventListener('click', closeModal);
+document.getElementById('open-sessions').addEventListener('click', e => {
+  e.stopPropagation();
+  openModal('Past sessions', 'loading...');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'session_list' }));
+  }
+});
+
+function openModal(title, body) {
+  qmModalTitle.textContent = title;
+  if (typeof body === 'string') {
+    qmModalBody.textContent = body;
+  } else {
+    while (qmModalBody.firstChild) qmModalBody.removeChild(qmModalBody.firstChild);
+    qmModalBody.appendChild(body);
+  }
+  qmModal.style.display = 'flex';
+}
+function closeModal() { qmModal.style.display = 'none'; }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && qmModal.style.display === 'flex') closeModal();
+});
+
+function formatTs(ts) {
+  if (!ts) return '?';
+  return new Date(ts * 1000).toLocaleString();
+}
+
+function renderSessionList(sessions, currentId) {
+  const wrap = document.createElement('div');
+  if (sessions.length === 0) {
+    wrap.textContent = 'No past sessions yet.';
+    qmModalBody.replaceChildren(wrap);
+    return;
+  }
+  sessions.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'qm-session-row';
+    if (s.id === currentId) row.classList.add('current');
+    const left = document.createElement('div');
+    const idLine = document.createElement('div');
+    idLine.textContent = s.id;
+    idLine.style.fontWeight = '600';
+    left.appendChild(idLine);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const parts = [];
+    if (s.started_at) parts.push(formatTs(s.started_at));
+    if (s.pane_count) parts.push(`${s.pane_count} panes`);
+    if (s.preset) parts.push(`preset: ${s.preset}`);
+    meta.textContent = parts.join(' · ') || '—';
+    left.appendChild(meta);
+    row.appendChild(left);
+    const btn = document.createElement('button');
+    btn.textContent = 'View';
+    btn.addEventListener('click', () => {
+      openModal(`Replay: ${s.id}`, 'loading replay...');
+      ws.send(JSON.stringify({ type: 'session_replay', id: s.id }));
+    });
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  });
+  qmModalBody.replaceChildren(wrap);
+}
+
+function renderReplay(replay) {
+  const wrap = document.createElement('div');
+  if (!replay.found) {
+    wrap.textContent = 'Session not found.';
+    qmModalBody.replaceChildren(wrap);
+    return;
+  }
+  const meta = replay.meta || {};
+  const back = document.createElement('button');
+  back.textContent = '← Back';
+  back.style.cssText = 'background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:4px;padding:3px 9px;font-size:11px;cursor:pointer;margin-bottom:10px';
+  back.addEventListener('click', () => {
+    ws.send(JSON.stringify({ type: 'session_list' }));
+    qmModalTitle.textContent = 'Past sessions';
+  });
+  wrap.appendChild(back);
+
+  const summary = document.createElement('div');
+  summary.style.cssText = 'color:#94a3b8;font-size:11px;margin-bottom:12px';
+  const parts = [];
+  if (meta.started_at) parts.push(`started ${formatTs(meta.started_at)}`);
+  if (meta.ended_at)   parts.push(`ended ${formatTs(meta.ended_at)}`);
+  if (meta.preset)     parts.push(`preset: ${meta.preset}`);
+  if (meta.repo)       parts.push(`repo: ${meta.repo}`);
+  summary.textContent = parts.join(' · ');
+  wrap.appendChild(summary);
+
+  (replay.buffers || []).forEach((buf, i) => {
+    const card = document.createElement('div');
+    card.className = 'qm-replay-pane';
+    const h = document.createElement('h4');
+    h.textContent = `Pane ${i + 1}`;
+    card.appendChild(h);
+    const body = document.createElement('div');
+    // Strip ANSI for readability in the replay panel.
+    const cleaned = (buf || '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    body.textContent = cleaned || '(no output captured)';
+    card.appendChild(body);
+    wrap.appendChild(card);
+  });
+
+  if (replay.events && replay.events.length) {
+    const evWrap = document.createElement('div');
+    const h = document.createElement('h4');
+    h.textContent = `Bus events (${replay.events.length})`;
+    h.style.cssText = 'font-size:11px;color:#38bdf8;margin:8px 0 4px';
+    evWrap.appendChild(h);
+    replay.events.slice(0, 100).forEach(ev => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#cbd5e1;padding:2px 0;border-bottom:1px solid #1f2937';
+      const d = new Date((ev.ts || 0) * 1000);
+      const hhmmss = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+      const pane = (typeof ev.shell === 'number') ? `p${ev.shell + 1} ` : '';
+      let label = '';
+      if (ev.type === 'state') label = `${pane}${ev.from || '?'} → ${ev.to}`;
+      else if (ev.type === 'handoff') label = `p${ev.source+1} → p${ev.target+1}` + (ev.instruction ? `: ${ev.instruction.slice(0,50)}` : '');
+      else if (ev.type === 'permission_request') label = `${pane}asked: ${(ev.question||'').slice(0,50)}`;
+      else if (ev.type === 'permission_resolved') label = `${pane}${ev.reason||'closed'}`;
+      else label = ev.type;
+      row.textContent = `${hhmmss}  ${label}`;
+      evWrap.appendChild(row);
+    });
+    wrap.appendChild(evWrap);
+  }
+
+  qmModalBody.replaceChildren(wrap);
+}
+
 // --- Toast (small ephemeral banner) ---
 let toastTimer = null;
 function showToast(text, isError) {
@@ -2049,6 +2300,42 @@ function applyState(shellIdx, state) {
   el.dataset.state = known;
   el.textContent = STATE_LABELS[known];
   el.title = `agent state: ${known}`;
+  // Phase 6: route notifications when a non-active pane needs attention.
+  notifyOnStateChange(shellIdx, known);
+}
+
+// --- Phase 6: notification routing ---
+let notifPermission = (typeof Notification !== 'undefined') ? Notification.permission : 'denied';
+function ensureNotifPermission() {
+  if (typeof Notification === 'undefined') return;
+  if (notifPermission === 'default') {
+    Notification.requestPermission().then(p => { notifPermission = p; });
+  }
+}
+// Ask once on first user interaction (browser requires a user gesture).
+document.addEventListener('click', ensureNotifPermission, { once: true });
+
+const NOTIFY_STATES = { awaiting_permission: 'Permission needed', errored: 'Error' };
+function notifyOnStateChange(shellIdx, state) {
+  if (!(state in NOTIFY_STATES)) return;
+  if (shellIdx === activeShell) {
+    // Active pane is on-screen, no need to nudge.
+    return;
+  }
+  const title = `Pane ${shellIdx + 1}: ${NOTIFY_STATES[state]}`;
+  if (notifPermission === 'granted') {
+    try {
+      const n = new Notification(title, { body: 'Click to focus.', tag: `qm-${shellIdx}-${state}` });
+      n.onclick = () => { window.focus(); setActiveShell(shellIdx); n.close(); };
+      setTimeout(() => { try { n.close(); } catch (_) {} }, 8000);
+    } catch (_) {
+      // ignore
+    }
+  } else {
+    showToast(title, state === 'errored');
+  }
+  // Brief audio bell via xterm.js (POSIX BEL char), only for the affected pane.
+  try { terms[shellIdx]?.write('\x07'); } catch (_) {}
 }
 
 // --- Permission aggregator tray ---
