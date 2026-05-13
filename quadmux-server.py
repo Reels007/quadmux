@@ -9,9 +9,11 @@ Requires: pip install websockets
 
 import argparse
 import asyncio
+import base64
 import json
 import os
 import pty
+import re
 import signal
 import shutil
 import socket
@@ -24,6 +26,17 @@ import threading
 import subprocess
 import time
 import uuid
+
+UPLOAD_DIR = os.path.expanduser("~/.quadmux/uploads")
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB cap per file
+_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_upload_path(filename: str) -> str:
+    base = os.path.basename(filename or "file")
+    base = _SAFE_NAME_RE.sub("_", base).strip("._") or "file"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    return os.path.join(UPLOAD_DIR, f"{int(time.time())}_{uuid.uuid4().hex[:6]}_{base}")
 
 # Unique per-server-process token. Embedded in HTML and sent in WebSocket hello
 # so any browser tab from a previous server process force-reloads instead of
@@ -425,6 +438,33 @@ async def handler(ws):
                         os.write(masters[idx], payload.encode())
                     except (OSError, IndexError) as e:
                         print(f"  Write error shell {idx}: {e}", flush=True)
+            elif msg_type == "upload":
+                idx = data.get("shell")
+                filename = data.get("filename", "file")
+                b64 = data.get("data", "")
+                if idx is None or not (0 <= idx < NUM_SHELLS):
+                    continue
+                try:
+                    raw = base64.b64decode(b64, validate=False)
+                except Exception as e:
+                    await ws.send(json.dumps({"type": "upload_error", "shell": idx,
+                                              "filename": filename, "error": f"decode: {e}"}))
+                    continue
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    await ws.send(json.dumps({"type": "upload_error", "shell": idx,
+                                              "filename": filename,
+                                              "error": f"file too large ({len(raw)} bytes)"}))
+                    continue
+                try:
+                    dest = _safe_upload_path(filename)
+                    with open(dest, "wb") as fh:
+                        fh.write(raw)
+                    print(f"  Upload shell {idx}: {filename} -> {dest} ({len(raw)} bytes)", flush=True)
+                    await ws.send(json.dumps({"type": "upload_done", "shell": idx,
+                                              "filename": filename, "path": dest}))
+                except OSError as e:
+                    await ws.send(json.dumps({"type": "upload_error", "shell": idx,
+                                              "filename": filename, "error": str(e)}))
             elif msg_type == "voice_start":
                 voice_shell = data.get("shell", -1)
                 print(f"  Voice active on pane {voice_shell + 1}", flush=True)
@@ -508,7 +548,8 @@ async def serve(port):
     asyncio.create_task(autosave_loop())
     print(f"QuadMux UI:  http://localhost:{port}", flush=True)
     print(f"WebSocket:   ws://localhost:{port}", flush=True)
-    async with websockets.serve(handler, "localhost", port, process_request=http_handler):
+    async with websockets.serve(handler, "localhost", port, process_request=http_handler,
+                                max_size=80 * 1024 * 1024):
         await asyncio.Future()
 
 
@@ -580,7 +621,12 @@ def main():
             sys.exit(1)
 
     # 3. Spawn BEFORE asyncio starts (pty.fork + asyncio ordering matters)
+    # Stagger spawns so the first pane completes OAuth token read/refresh
+    # before the next starts. Avoids a refresh-token rotation race that
+    # surfaces as "API error 401" on later panes.
     for i in range(NUM_SHELLS):
+        if i > 0:
+            time.sleep(1.5)
         try:
             pid, master_fd = spawn_claude(claude_path, i)
         except RuntimeError as e:
