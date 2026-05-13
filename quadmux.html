@@ -604,6 +604,142 @@ body {
     .input-bar { max-width: 100%; }
   }
 
+  /* Phase 5: cost chip + global total + activity panel */
+  .shell-cost {
+    font-size: 9px;
+    color: #475569;
+    background: #e2e8f0;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .shell-cost[data-empty="1"] { opacity: 0.4; }
+
+  .global-cost {
+    position: fixed;
+    bottom: 12px;
+    right: 14px;
+    z-index: 1080;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .global-cost .label {
+    color: #94a3b8;
+    margin-right: 5px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .activity-toggle {
+    position: fixed;
+    top: 12px;
+    left: 130px;
+    z-index: 1100;
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .activity-toggle:hover { background: #1e293b; }
+
+  .activity-side {
+    position: fixed;
+    top: 0;
+    right: -380px;
+    width: 360px;
+    height: 100vh;
+    background: #0b1220;
+    color: #e2e8f0;
+    border-left: 1px solid #1f2937;
+    box-shadow: -4px 0 18px rgba(0, 0, 0, 0.35);
+    transition: right 0.18s ease-out;
+    z-index: 1090;
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+  }
+  .activity-side.open { right: 0; }
+  .activity-head {
+    padding: 14px 14px 8px;
+    border-bottom: 1px solid #1f2937;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .activity-head h3 {
+    margin: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #38bdf8;
+  }
+  .activity-filters {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .activity-filter {
+    background: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .activity-filter.active {
+    background: #38bdf8;
+    color: #0b1220;
+    border-color: #38bdf8;
+    font-weight: 700;
+  }
+  .activity-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .activity-row {
+    border-left: 2px solid #334155;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    background: #111c2f;
+    border-radius: 0 3px 3px 0;
+  }
+  .activity-row[data-type="state"]               { border-left-color: #64748b; }
+  .activity-row[data-type^="permission"]         { border-left-color: #dc2626; }
+  .activity-row[data-type="handoff"]             { border-left-color: #38bdf8; }
+  .activity-row .ts {
+    color: #64748b;
+    font-size: 10px;
+    margin-right: 6px;
+  }
+  .activity-row .label {
+    color: #f1f5f9;
+    word-break: break-word;
+  }
+  .activity-empty {
+    color: #64748b;
+    padding: 30px 14px;
+    font-style: italic;
+    text-align: center;
+  }
+
   /* Parked-tasks sidebar */
   .park-toggle {
     position: fixed;
@@ -935,6 +1071,24 @@ body {
 <button class="park-toggle" id="park-toggle" title="Parked tasks">
   Parked <span class="badge" id="park-toggle-count" data-empty="1">0</span>
 </button>
+<button class="activity-toggle" id="activity-toggle" title="Activity log">Activity</button>
+
+<aside class="activity-side" id="activity-side" role="region" aria-label="Activity log">
+  <div class="activity-head">
+    <h3>Activity log</h3>
+    <div class="activity-filters" id="activity-filters">
+      <button class="activity-filter active" data-filter="all">All</button>
+      <button class="activity-filter" data-filter="state">States</button>
+      <button class="activity-filter" data-filter="permission">Permissions</button>
+      <button class="activity-filter" data-filter="handoff">Handoffs</button>
+    </div>
+  </div>
+  <div class="activity-body" id="activity-body"></div>
+</aside>
+
+<div class="global-cost" id="global-cost" title="Total tokens across all panes (server polls every 5s)">
+  <span class="label">Total</span><span id="global-cost-text">0 tok · $0.00</span>
+</div>
 
 <aside class="park-side" id="park-side" role="region" aria-label="Parked tasks">
   <div class="park-head">
@@ -960,6 +1114,7 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-0"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <span class="shell-cost" id="cost-0" data-empty="1" title="Pane 1 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="0" title="Hand off this pane's last output to another pane">↪</button>
@@ -984,6 +1139,7 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-1"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <span class="shell-cost" id="cost-1" data-empty="1" title="Pane 2 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="1" title="Hand off this pane's last output to another pane">↪</button>
@@ -1008,6 +1164,7 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-2"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <span class="shell-cost" id="cost-2" data-empty="1" title="Pane 3 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="2" title="Hand off this pane's last output to another pane">↪</button>
@@ -1030,6 +1187,7 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-3"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <span class="shell-cost" id="cost-3" data-empty="1" title="Pane 4 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="3" title="Hand off this pane's last output to another pane">↪</button>
@@ -1649,12 +1807,15 @@ function connect() {
       updateHealth();
     } else if (data.type === 'state') {
       applyState(data.shell, data.state);
+      refreshActivityIfOpen();
     } else if (data.type === 'state_snapshot') {
       (data.states || []).forEach(s => applyState(s.shell, s.state));
     } else if (data.type === 'permission_request') {
       addPermissionRequest(data);
+      refreshActivityIfOpen();
     } else if (data.type === 'permission_resolved') {
       removePermissionRequest(data.id);
+      refreshActivityIfOpen();
     } else if (data.type === 'permission_snapshot') {
       pendingPermissions.clear();
       (data.requests || []).forEach(r => pendingPermissions.set(r.id, r));
@@ -1678,10 +1839,139 @@ function connect() {
       showToast(`Handoff: pane ${data.source + 1} → pane ${data.target + 1}`);
       flashPane(data.source);
       flashPane(data.target);
+      refreshActivityIfOpen();
     } else if (data.type === 'handoff_error') {
       showToast(`Handoff failed: ${data.error}`, true);
+    } else if (data.type === 'cost_snapshot') {
+      applyCostSnapshot(data);
+    } else if (data.type === 'activity_response') {
+      renderActivity(data.events || []);
     }
   };
+}
+
+// --- Cost meter (phase 5) ---
+function formatTokens(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return Math.round(n / 1_000) + 'k';
+  return String(n);
+}
+function applyCostSnapshot(snap) {
+  const panes = snap.panes || [];
+  panes.forEach(p => {
+    const el = document.getElementById(`cost-${p.shell}`);
+    if (!el) return;
+    const tok = p.total_tokens || 0;
+    const cost = p.cost || 0;
+    el.textContent = `${formatTokens(tok)} tok · $${cost.toFixed(2)}`;
+    el.dataset.empty = tok === 0 ? '1' : '0';
+    if (!p.has_session) {
+      el.title = `Pane ${p.shell + 1}: waiting for Claude session file`;
+    } else {
+      el.title = `Pane ${p.shell + 1}: ${tok} tokens · $${cost.toFixed(4)}`
+        + (p.model ? ` · ${p.model}` : '');
+    }
+  });
+  const totalEl = document.getElementById('global-cost-text');
+  if (totalEl) {
+    totalEl.textContent = `${formatTokens(snap.total_tokens || 0)} tok · $${(snap.total_cost || 0).toFixed(2)}`;
+  }
+}
+
+// --- Activity log (phase 5) ---
+const activitySide = document.getElementById('activity-side');
+const activityBody = document.getElementById('activity-body');
+const activityToggleBtn = document.getElementById('activity-toggle');
+let activityFilter = 'all';
+let activityCache = [];
+
+activityToggleBtn.addEventListener('click', () => {
+  const opening = !activitySide.classList.contains('open');
+  activitySide.classList.toggle('open');
+  if (opening) requestActivity();
+});
+
+document.getElementById('activity-filters').addEventListener('click', e => {
+  const btn = e.target.closest('.activity-filter');
+  if (!btn) return;
+  document.querySelectorAll('.activity-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activityFilter = btn.dataset.filter;
+  renderActivity(activityCache);
+});
+
+function requestActivity() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'activity_request', limit: 200 }));
+  }
+}
+
+function describeEvent(ev) {
+  const pane = (typeof ev.shell === 'number') ? `pane ${ev.shell + 1}` : '';
+  if (ev.type === 'state') {
+    return `${pane}: ${ev.from || '?'} → ${ev.to}` + (ev.reason ? ` (${ev.reason})` : '');
+  }
+  if (ev.type === 'permission_request') {
+    return `${pane} asked: ${(ev.question || 'permission').slice(0, 80)}`;
+  }
+  if (ev.type === 'permission_resolved') {
+    return `${pane} resolved (${ev.reason || 'closed'})`;
+  }
+  if (ev.type === 'handoff') {
+    return `pane ${ev.source + 1} → pane ${ev.target + 1}`
+      + (ev.instruction ? `: ${ev.instruction.slice(0, 60)}` : '');
+  }
+  return JSON.stringify(ev).slice(0, 100);
+}
+
+function eventMatchesFilter(ev) {
+  if (activityFilter === 'all') return true;
+  if (activityFilter === 'state') return ev.type === 'state';
+  if (activityFilter === 'permission') return ev.type && ev.type.startsWith('permission');
+  if (activityFilter === 'handoff') return ev.type === 'handoff';
+  return true;
+}
+
+function renderActivity(events) {
+  activityCache = events;
+  while (activityBody.firstChild) activityBody.removeChild(activityBody.firstChild);
+  const filtered = events.filter(eventMatchesFilter);
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'activity-empty';
+    empty.textContent = 'No events yet.';
+    activityBody.appendChild(empty);
+    return;
+  }
+  filtered.forEach(ev => {
+    const row = document.createElement('div');
+    row.className = 'activity-row';
+    row.dataset.type = ev.type || 'unknown';
+    const ts = document.createElement('span');
+    ts.className = 'ts';
+    const d = new Date((ev.ts || 0) * 1000);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    ts.textContent = `${hh}:${mm}:${ss}`;
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = describeEvent(ev);
+    row.appendChild(ts);
+    row.appendChild(label);
+    if (typeof ev.shell === 'number' || typeof ev.target === 'number') {
+      const jumpTo = (typeof ev.target === 'number') ? ev.target : ev.shell;
+      row.style.cursor = 'pointer';
+      row.title = 'Click to focus that pane';
+      row.addEventListener('click', () => setActiveShell(jumpTo));
+    }
+    activityBody.appendChild(row);
+  });
+}
+
+// Refresh the activity log when bus events come in (lightweight pull).
+function refreshActivityIfOpen() {
+  if (activitySide.classList.contains('open')) requestActivity();
 }
 
 // --- Toast (small ephemeral banner) ---

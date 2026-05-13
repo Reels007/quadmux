@@ -56,6 +56,8 @@ from status_bus import StatusBus
 import presets as presets_mod
 import worktree as worktree_mod
 import parked as parked_mod
+import costs as costs_mod
+import activity_log as activity_mod
 
 masters = []
 child_pids = []
@@ -72,6 +74,11 @@ BUS_TICK_INTERVAL = 1.0
 pane_meta = []  # list of dicts indexed by shell idx
 worktree_repo = None  # path to the source repo if worktrees were created
 worktree_session_id = None  # for prune-on-shutdown
+
+# Phase 5: per-pane cost trackers
+cost_trackers = []  # list of costs_mod.CostTracker
+COST_POLL_INTERVAL = 5.0  # seconds
+SESSION_LOOKUP_RETRY_INTERVAL = 8.0  # seconds before re-scanning for missing session files
 SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
 AUTOSAVE_INTERVAL = 30  # seconds
 
@@ -488,6 +495,59 @@ async def bus_tick_loop():
             await _broadcast_state(change["shell"], change["to"], change["ts"])
 
 
+def _cost_snapshot_payload():
+    """Build the full cost-snapshot WS payload (per-pane + totals)."""
+    panes = []
+    total_tokens = 0
+    total_cost = 0.0
+    for i, t in enumerate(cost_trackers):
+        snap = t.snapshot() if t else {"tokens": {"input": 0, "output": 0,
+                                                   "cache_read": 0, "cache_write": 0},
+                                       "total_tokens": 0, "cost": 0.0, "model": ""}
+        panes.append({"shell": i, **snap,
+                      "has_session": bool(t and t.path)})
+        total_tokens += snap["total_tokens"]
+        total_cost += snap["cost"]
+    return {"type": "cost_snapshot", "panes": panes,
+            "total_tokens": total_tokens, "total_cost": round(total_cost, 4)}
+
+
+async def _broadcast_cost():
+    payload = json.dumps(_cost_snapshot_payload())
+    for ws in clients.copy():
+        try:
+            await ws.send(payload)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def cost_poll_loop():
+    """Poll each pane's session JSONL for new usage events."""
+    last_lookup = 0.0
+    while True:
+        await asyncio.sleep(COST_POLL_INTERVAL)
+        if not cost_trackers:
+            continue
+        # If any pane lacks a session file yet, retry the lookup periodically.
+        if any(t and not t.path for t in cost_trackers):
+            now = time.time()
+            if now - last_lookup >= SESSION_LOOKUP_RETRY_INTERVAL:
+                last_lookup = now
+                cwds = [(pane_meta[i].get("cwd") if i < len(pane_meta) else "") or ""
+                        for i in range(NUM_SHELLS)]
+                paths = costs_mod.assign_session_files(cwds)
+                for i, p in enumerate(paths):
+                    if cost_trackers[i] and not cost_trackers[i].path and p:
+                        cost_trackers[i].attach(p)
+                        print(f"  Cost: pane {i+1} attached to {p}", flush=True)
+        changed = False
+        for t in cost_trackers:
+            if t and t.poll():
+                changed = True
+        if changed:
+            await _broadcast_cost()
+
+
 async def broadcast_error(idx, text):
     """Broadcast an error message for a specific shell."""
     msg = json.dumps({"type": "output", "shell": idx, "text": f"\r\n\x1b[31m[QuadMux] {text}\x1b[0m\r\n"})
@@ -573,6 +633,8 @@ async def handler(ws):
             # Parked tasks sidebar
             await ws.send(json.dumps({"type": "parked_list",
                                       "tasks": parked_mod.list_tasks()}))
+            # Cost snapshot (per-pane tokens + total)
+            await ws.send(json.dumps(_cost_snapshot_payload()))
         except websockets.ConnectionClosed:
             clients.discard(ws)
             return
@@ -634,6 +696,20 @@ async def handler(ws):
                 except OSError as e:
                     await ws.send(json.dumps({"type": "upload_error", "shell": idx,
                                               "filename": filename, "error": str(e)}))
+            elif msg_type == "activity_request":
+                limit = data.get("limit") or 200
+                shell_filter = data.get("shell")
+                types_filter = data.get("types")
+                try:
+                    events = activity_mod.recent_events(
+                        limit=int(limit),
+                        shell=shell_filter if isinstance(shell_filter, int) else None,
+                        event_types=list(types_filter) if isinstance(types_filter, list) else None,
+                    )
+                except (ValueError, TypeError):
+                    events = []
+                await ws.send(json.dumps({"type": "activity_response",
+                                          "events": events}))
             elif msg_type == "parked_add":
                 try:
                     task = parked_mod.add_task(
@@ -795,6 +871,7 @@ async def serve(port):
     loop = asyncio.get_running_loop()
     asyncio.create_task(autosave_loop())
     asyncio.create_task(bus_tick_loop())
+    asyncio.create_task(cost_poll_loop())
     print(f"QuadMux UI:  http://localhost:{port}", flush=True)
     print(f"WebSocket:   ws://localhost:{port}", flush=True)
     async with websockets.serve(handler, "localhost", port, process_request=http_handler,
@@ -924,6 +1001,11 @@ def main():
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()
     bus = StatusBus(NUM_SHELLS)
+
+    # Phase 5: initialise per-pane cost trackers. Session files are looked up
+    # later (in cost_poll_loop) once Claude has actually created them.
+    global cost_trackers
+    cost_trackers = [costs_mod.CostTracker() for _ in range(NUM_SHELLS)]
 
     # 1. Find claude
     claude_path = find_claude()
