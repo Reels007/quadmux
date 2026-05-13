@@ -55,6 +55,7 @@ import re
 from status_bus import StatusBus
 import presets as presets_mod
 import worktree as worktree_mod
+import parked as parked_mod
 
 masters = []
 child_pids = []
@@ -81,6 +82,42 @@ voice_shell = -1           # which shell has voice active (-1 = none)
 voice_capturing = {}       # shell -> bool, are we capturing output after voice input?
 voice_buffers = {}         # shell -> str, accumulated raw output since voice input
 voice_timers = {}          # shell -> asyncio.TimerHandle for settling timeout
+
+def _prose_lines(raw_text):
+    """Internal: yield filtered prose lines from raw PTY output."""
+    clean = ANSI_RE.sub('', raw_text)
+    clean = re.sub(r'[─│┌┐└┘├┤┬┴┼╭╮╯╰▓░▒█]', '', clean)
+    clean = re.sub(r'[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏●◯✓✗✔✘⚡❯▶◀▲▼]', '', clean)
+    out = []
+    for line in clean.split('\n'):
+        line = line.strip()
+        if len(line) < 10:
+            continue
+        if not line[0].isalpha():
+            continue
+        good = sum(1 for c in line if c.isalpha() or c in ' ,.\'"!?;:-')
+        if good / len(line) < 0.75:
+            continue
+        lower = line.lower()
+        if any(x in lower for x in ['calculat', 'token', 'cost:', 'allow', 'deny',
+                                      'read(', 'write(', 'edit(', 'bash(', 'glob(', 'grep(',
+                                      '.py:', '.js:', '.ts:', '.html:', 'localhost',
+                                      'http://', 'https://', '```']):
+            continue
+        out.append(line)
+    return out
+
+
+def extract_recent_prose(shell_idx: int, max_lines: int = 40) -> str:
+    """Pull up to `max_lines` recent prose lines from a shell's output buffer."""
+    if not (0 <= shell_idx < len(shell_buffers)):
+        return ""
+    raw = "".join(shell_buffers[shell_idx][-30:])
+    lines = _prose_lines(raw)
+    if not lines:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
 
 def extract_prose(raw_text):
     """Extract clean prose from raw terminal output. Returns text suitable for TTS."""
@@ -403,6 +440,34 @@ async def _broadcast_permission_request(req):
             clients.discard(ws)
 
 
+async def _broadcast_parked_update(task, action="update"):
+    msg = json.dumps({"type": "parked_" + action, "task": task})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def _broadcast_parked_delete(task_id):
+    msg = json.dumps({"type": "parked_delete", "id": task_id})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def _broadcast_handoff(source, target, instruction):
+    msg = json.dumps({"type": "handoff", "source": source, "target": target,
+                      "instruction": instruction, "ts": time.time()})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
 async def _broadcast_permission_resolved(req_id, shell_idx, reason):
     msg = json.dumps({"type": "permission_resolved", "id": req_id,
                       "shell": shell_idx, "reason": reason, "ts": time.time()})
@@ -505,6 +570,9 @@ async def handler(ws):
                 for i in range(NUM_SHELLS)
             ]
             await ws.send(json.dumps({"type": "pane_meta", "panes": meta_payload}))
+            # Parked tasks sidebar
+            await ws.send(json.dumps({"type": "parked_list",
+                                      "tasks": parked_mod.list_tasks()}))
         except websockets.ConnectionClosed:
             clients.discard(ws)
             return
@@ -566,6 +634,65 @@ async def handler(ws):
                 except OSError as e:
                     await ws.send(json.dumps({"type": "upload_error", "shell": idx,
                                               "filename": filename, "error": str(e)}))
+            elif msg_type == "parked_add":
+                try:
+                    task = parked_mod.add_task(
+                        title=data.get("title", ""),
+                        note=data.get("note", ""),
+                        status=data.get("status", "parked"),
+                        pane=data.get("pane"),
+                    )
+                    await _broadcast_parked_update(task, action="add")
+                except ValueError as e:
+                    await ws.send(json.dumps({"type": "parked_error",
+                                              "error": str(e)}))
+            elif msg_type == "parked_update":
+                tid = data.get("id")
+                if not isinstance(tid, int):
+                    continue
+                fields = {k: data[k] for k in ("title", "note", "status", "pane")
+                          if k in data}
+                updated = parked_mod.update_task(tid, **fields)
+                if updated:
+                    await _broadcast_parked_update(updated, action="update")
+            elif msg_type == "parked_delete":
+                tid = data.get("id")
+                if not isinstance(tid, int):
+                    continue
+                if parked_mod.delete_task(tid):
+                    await _broadcast_parked_delete(tid)
+            elif msg_type == "handoff_request":
+                # Snapshot source pane's recent prose and inject it into target pane.
+                source = data.get("source")
+                target = data.get("target")
+                instruction = (data.get("instruction") or "").strip()
+                if (source is None or target is None
+                        or not (0 <= source < NUM_SHELLS)
+                        or not (0 <= target < NUM_SHELLS)
+                        or source == target):
+                    await ws.send(json.dumps({"type": "handoff_error",
+                                              "error": "bad source/target"}))
+                    continue
+                prose = extract_recent_prose(source)
+                if not prose:
+                    await ws.send(json.dumps({"type": "handoff_error",
+                                              "error": f"no prose to hand off from pane {source+1}"}))
+                    continue
+                wrapper = f"[Handoff from pane {source+1}]\n{prose}"
+                if instruction:
+                    wrapper += f"\n\n[Instruction] {instruction}"
+                try:
+                    os.write(masters[target], (wrapper + "\r").encode())
+                    print(f"  Handoff: {source+1} -> {target+1} "
+                          f"({len(prose)} chars prose)", flush=True)
+                except (OSError, IndexError) as e:
+                    await ws.send(json.dumps({"type": "handoff_error",
+                                              "error": f"write failed: {e}"}))
+                    continue
+                if bus is not None:
+                    bus._log({"type": "handoff", "source": source, "target": target,
+                              "instruction": instruction, "ts": time.time()})
+                await _broadcast_handoff(source, target, instruction)
             elif msg_type == "permission_response":
                 # Resolve a pending permission request by sending y/n to the right pane.
                 idx = data.get("shell")

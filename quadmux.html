@@ -604,6 +604,247 @@ body {
     .input-bar { max-width: 100%; }
   }
 
+  /* Parked-tasks sidebar */
+  .park-toggle {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1100;
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .park-toggle:hover { background: #1e293b; }
+  .park-toggle .badge {
+    display: inline-block;
+    margin-left: 6px;
+    background: #facc15;
+    color: #1f2937;
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .park-toggle .badge[data-empty="1"] { display: none; }
+
+  .park-side {
+    position: fixed;
+    top: 0;
+    left: -340px;
+    width: 320px;
+    height: 100vh;
+    background: #0b1220;
+    color: #e2e8f0;
+    border-right: 1px solid #1f2937;
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.35);
+    transition: left 0.18s ease-out;
+    z-index: 1090;
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+  }
+  .park-side.open { left: 0; }
+  .park-head {
+    padding: 14px 14px 8px;
+    border-bottom: 1px solid #1f2937;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .park-head h3 {
+    margin: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #fbbf24;
+  }
+  .park-head button {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .park-head button:hover { background: #1d4ed8; }
+  .park-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .park-empty {
+    text-align: center;
+    color: #64748b;
+    padding: 30px 14px;
+    font-style: italic;
+  }
+  .park-form {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .park-form input, .park-form textarea, .park-form select {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 4px;
+    font: inherit;
+    padding: 5px 6px;
+    background: #1e293b;
+    color: #f1f5f9;
+    border: 1px solid #334155;
+    border-radius: 4px;
+  }
+  .park-form label {
+    display: block;
+    margin-top: 6px;
+    color: #94a3b8;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .park-form .row { display: flex; gap: 6px; }
+  .park-form .row > * { flex: 1; }
+  .park-form-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .park-form-actions button {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .park-form-actions .save   { background: #16a34a; color: #fff; }
+  .park-form-actions .cancel { background: #334155; color: #f1f5f9; }
+
+  .park-card {
+    background: #111c2f;
+    border: 1px solid #1f2937;
+    border-left-width: 3px;
+    border-radius: 5px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .park-card[data-status="parked"]      { border-left-color: #facc15; }
+  .park-card[data-status="blocked"]     { border-left-color: #dc2626; }
+  .park-card[data-status="in-progress"] { border-left-color: #2563eb; }
+  .park-card[data-status="done"]        { border-left-color: #16a34a; opacity: 0.55; }
+  .park-card-title {
+    color: #f1f5f9;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  .park-card-note {
+    color: #94a3b8;
+    margin-top: 4px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+  }
+  .park-card-meta {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #64748b;
+  }
+  .park-card-status {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #1f2937;
+    padding: 1px 6px;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-weight: 600;
+  }
+  .park-card-pane {
+    background: #1e3a8a;
+    color: #dbeafe;
+    padding: 1px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .park-card-pane:hover { background: #1d4ed8; }
+  .park-card-actions { margin-left: auto; display: flex; gap: 4px; }
+  .park-card-actions button {
+    background: transparent;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    padding: 1px 6px;
+    cursor: pointer;
+    font-size: 10px;
+  }
+  .park-card-actions button:hover { background: #1e293b; color: #f1f5f9; }
+  .park-card-actions .danger:hover { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
+
+  /* Handoff button + popover (phase 4) */
+  .btn-handoff {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #475569;
+    border-radius: 4px;
+    padding: 1px 5px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .btn-handoff:hover { background: #f1f5f9; }
+  .handoff-pop {
+    position: absolute;
+    z-index: 900;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    padding: 10px;
+    width: 260px;
+    font-size: 11px;
+  }
+  .handoff-pop h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+  }
+  .handoff-pop label { display: block; margin: 6px 0 2px; color: #475569; }
+  .handoff-pop select, .handoff-pop textarea {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    padding: 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+  }
+  .handoff-pop textarea { resize: vertical; min-height: 50px; }
+  .handoff-pop-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .handoff-pop-actions button {
+    flex: 1;
+    padding: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .handoff-pop-actions .ok     { background: #2563eb; color: #fff; }
+  .handoff-pop-actions .cancel { background: #e2e8f0; color: #334155; }
+
   /* Permission aggregator tray */
   .perm-tray {
     position: fixed;
@@ -691,6 +932,18 @@ body {
 </head>
 <body>
 
+<button class="park-toggle" id="park-toggle" title="Parked tasks">
+  Parked <span class="badge" id="park-toggle-count" data-empty="1">0</span>
+</button>
+
+<aside class="park-side" id="park-side" role="region" aria-label="Parked tasks">
+  <div class="park-head">
+    <h3>Parked tasks</h3>
+    <button id="park-add">+ Add</button>
+  </div>
+  <div class="park-body" id="park-body"></div>
+</aside>
+
 <div class="perm-tray" id="perm-tray" role="region" aria-label="Pending permission requests">
   <div class="perm-tray-header">
     <span class="perm-tray-title">Permission requests</span>
@@ -709,6 +962,7 @@ body {
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
+        <button class="btn-handoff" data-source="0" title="Hand off this pane's last output to another pane">↪</button>
         <span class="shell-health" id="health-0" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -732,6 +986,7 @@ body {
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
+        <button class="btn-handoff" data-source="1" title="Hand off this pane's last output to another pane">↪</button>
         <span class="shell-health" id="health-1" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -755,6 +1010,7 @@ body {
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
+        <button class="btn-handoff" data-source="2" title="Hand off this pane's last output to another pane">↪</button>
         <span class="shell-health" id="health-2" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -776,6 +1032,7 @@ body {
         <span class="shell-focus-dot"></span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
+        <button class="btn-handoff" data-source="3" title="Hand off this pane's last output to another pane">↪</button>
         <span class="shell-health" id="health-3" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1404,6 +1661,19 @@ function connect() {
       renderPermTray();
     } else if (data.type === 'pane_meta') {
       (data.panes || []).forEach(p => applyPaneMeta(p));
+    } else if (data.type === 'parked_list') {
+      parkedTasks.clear();
+      (data.tasks || []).forEach(t => parkedTasks.set(t.id, t));
+      renderParkSidebar();
+    } else if (data.type === 'parked_add' || data.type === 'parked_update') {
+      if (data.task) {
+        parkedTasks.set(data.task.id, data.task);
+        renderParkSidebar();
+      }
+    } else if (data.type === 'parked_delete') {
+      if (parkedTasks.delete(data.id)) renderParkSidebar();
+    } else if (data.type === 'parked_error') {
+      console.error('Parked error:', data.error);
     }
   };
 }
@@ -1498,6 +1768,305 @@ function addPermissionRequest(req) {
 function removePermissionRequest(id) {
   if (pendingPermissions.delete(id)) renderPermTray();
 }
+
+// --- Parked tasks sidebar ---
+const parkedTasks = new Map();
+const parkToggleBtn = document.getElementById('park-toggle');
+const parkToggleCount = document.getElementById('park-toggle-count');
+const parkSide = document.getElementById('park-side');
+const parkBody = document.getElementById('park-body');
+const parkAddBtn = document.getElementById('park-add');
+let parkFormOpen = false;
+
+parkToggleBtn.addEventListener('click', () => {
+  parkSide.classList.toggle('open');
+});
+parkAddBtn.addEventListener('click', () => {
+  parkFormOpen = true;
+  renderParkSidebar();
+  const titleInput = document.getElementById('park-form-title');
+  if (titleInput) titleInput.focus();
+});
+
+function activeCount() {
+  let n = 0;
+  for (const t of parkedTasks.values()) if (t.status !== 'done') n++;
+  return n;
+}
+
+function renderParkSidebar() {
+  while (parkBody.firstChild) parkBody.removeChild(parkBody.firstChild);
+
+  if (parkFormOpen) parkBody.appendChild(buildParkForm());
+
+  const tasks = Array.from(parkedTasks.values()).sort((a, b) => {
+    // done last, then by status priority, then by updated desc
+    const order = { 'in-progress': 0, blocked: 1, parked: 2, done: 3 };
+    return (order[a.status] - order[b.status]) || (b.updated - a.updated);
+  });
+
+  if (tasks.length === 0 && !parkFormOpen) {
+    const empty = document.createElement('div');
+    empty.className = 'park-empty';
+    empty.textContent = 'No parked tasks. Click + Add to flag work you have paused or not fully cleared.';
+    parkBody.appendChild(empty);
+  }
+  tasks.forEach(t => parkBody.appendChild(buildParkCard(t)));
+
+  const n = activeCount();
+  parkToggleCount.textContent = n;
+  parkToggleCount.dataset.empty = n === 0 ? '1' : '0';
+}
+
+function buildParkForm(editing) {
+  const wrap = document.createElement('div');
+  wrap.className = 'park-form';
+
+  const titleLabel = document.createElement('label');
+  titleLabel.textContent = 'Title';
+  wrap.appendChild(titleLabel);
+  const titleInput = document.createElement('input');
+  titleInput.id = 'park-form-title';
+  titleInput.type = 'text';
+  titleInput.maxLength = 200;
+  titleInput.value = editing?.title || '';
+  wrap.appendChild(titleInput);
+
+  const noteLabel = document.createElement('label');
+  noteLabel.textContent = 'Note (optional)';
+  wrap.appendChild(noteLabel);
+  const noteInput = document.createElement('textarea');
+  noteInput.rows = 3;
+  noteInput.maxLength = 2000;
+  noteInput.value = editing?.note || '';
+  wrap.appendChild(noteInput);
+
+  const row = document.createElement('div');
+  row.className = 'row';
+
+  const statusBox = document.createElement('div');
+  const statusLabel = document.createElement('label');
+  statusLabel.textContent = 'Status';
+  statusBox.appendChild(statusLabel);
+  const statusSelect = document.createElement('select');
+  ['parked', 'in-progress', 'blocked', 'done'].forEach(s => {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    if ((editing?.status || 'parked') === s) o.selected = true;
+    statusSelect.appendChild(o);
+  });
+  statusBox.appendChild(statusSelect);
+  row.appendChild(statusBox);
+
+  const paneBox = document.createElement('div');
+  const paneLabel = document.createElement('label');
+  paneLabel.textContent = 'Pane';
+  paneBox.appendChild(paneLabel);
+  const paneSelect = document.createElement('select');
+  const none = document.createElement('option');
+  none.value = ''; none.textContent = '(none)';
+  paneSelect.appendChild(none);
+  for (let i = 0; i < terms.length; i++) {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = `Pane ${i + 1}`;
+    if (editing && editing.pane === i) o.selected = true;
+    paneSelect.appendChild(o);
+  }
+  paneBox.appendChild(paneSelect);
+  row.appendChild(paneBox);
+
+  wrap.appendChild(row);
+
+  const actions = document.createElement('div');
+  actions.className = 'park-form-actions';
+  const save = document.createElement('button');
+  save.className = 'save';
+  save.textContent = editing ? 'Save' : 'Add';
+  save.addEventListener('click', () => {
+    const title = titleInput.value.trim();
+    if (!title) { titleInput.focus(); return; }
+    const payload = {
+      title,
+      note: noteInput.value,
+      status: statusSelect.value,
+      pane: paneSelect.value === '' ? null : parseInt(paneSelect.value, 10),
+    };
+    if (editing) {
+      ws.send(JSON.stringify({ type: 'parked_update', id: editing.id, ...payload }));
+    } else {
+      ws.send(JSON.stringify({ type: 'parked_add', ...payload }));
+    }
+    parkFormOpen = false;
+    renderParkSidebar();
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => {
+    parkFormOpen = false;
+    renderParkSidebar();
+  });
+  actions.appendChild(save);
+  actions.appendChild(cancel);
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function buildParkCard(t) {
+  const card = document.createElement('div');
+  card.className = 'park-card';
+  card.dataset.status = t.status;
+
+  const title = document.createElement('div');
+  title.className = 'park-card-title';
+  title.textContent = t.title;
+  card.appendChild(title);
+
+  if (t.note) {
+    const note = document.createElement('div');
+    note.className = 'park-card-note';
+    note.textContent = t.note;
+    card.appendChild(note);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'park-card-meta';
+
+  const statusPill = document.createElement('span');
+  statusPill.className = 'park-card-status';
+  statusPill.textContent = t.status;
+  meta.appendChild(statusPill);
+
+  if (typeof t.pane === 'number') {
+    const paneChip = document.createElement('span');
+    paneChip.className = 'park-card-pane';
+    paneChip.textContent = `Pane ${t.pane + 1}`;
+    paneChip.title = 'Focus this pane';
+    paneChip.addEventListener('click', () => setActiveShell(t.pane));
+    meta.appendChild(paneChip);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'park-card-actions';
+  const cycleBtn = document.createElement('button');
+  cycleBtn.textContent = 'Next';
+  cycleBtn.title = 'Cycle status';
+  cycleBtn.addEventListener('click', () => {
+    const order = ['parked', 'in-progress', 'blocked', 'done'];
+    const next = order[(order.indexOf(t.status) + 1) % order.length];
+    ws.send(JSON.stringify({ type: 'parked_update', id: t.id, status: next }));
+  });
+  actions.appendChild(cycleBtn);
+
+  const editBtn = document.createElement('button');
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', () => editParkedInline(card, t));
+  actions.appendChild(editBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'danger';
+  delBtn.textContent = 'Del';
+  delBtn.addEventListener('click', () => {
+    if (confirm(`Delete parked task "${t.title}"?`)) {
+      ws.send(JSON.stringify({ type: 'parked_delete', id: t.id }));
+    }
+  });
+  actions.appendChild(delBtn);
+
+  meta.appendChild(actions);
+  card.appendChild(meta);
+  return card;
+}
+
+function editParkedInline(card, t) {
+  const form = buildParkForm(t);
+  card.replaceWith(form);
+}
+
+// --- Handoff popover (phase 4) ---
+let handoffPopover = null;
+function closeHandoffPopover() {
+  if (handoffPopover) {
+    handoffPopover.remove();
+    handoffPopover = null;
+    document.removeEventListener('click', handleHandoffOutsideClick, true);
+  }
+}
+function handleHandoffOutsideClick(e) {
+  if (handoffPopover && !handoffPopover.contains(e.target)
+      && !e.target.classList.contains('btn-handoff')) {
+    closeHandoffPopover();
+  }
+}
+function openHandoffPopover(button, sourceIdx) {
+  closeHandoffPopover();
+  const pop = document.createElement('div');
+  pop.className = 'handoff-pop';
+
+  const h = document.createElement('h4');
+  h.textContent = `Hand off from pane ${sourceIdx + 1}`;
+  pop.appendChild(h);
+
+  const targetLabel = document.createElement('label');
+  targetLabel.textContent = 'Send to pane';
+  pop.appendChild(targetLabel);
+
+  const select = document.createElement('select');
+  for (let i = 0; i < terms.length; i++) {
+    if (i === sourceIdx) continue;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `Pane ${i + 1}`;
+    select.appendChild(opt);
+  }
+  pop.appendChild(select);
+
+  const instrLabel = document.createElement('label');
+  instrLabel.textContent = 'Instruction (optional)';
+  pop.appendChild(instrLabel);
+
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = 'e.g. review this and flag any bugs';
+  pop.appendChild(textarea);
+
+  const actions = document.createElement('div');
+  actions.className = 'handoff-pop-actions';
+  const ok = document.createElement('button');
+  ok.className = 'ok';
+  ok.textContent = 'Hand off';
+  ok.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'handoff_request',
+        source: sourceIdx,
+        target: parseInt(select.value, 10),
+        instruction: textarea.value.trim(),
+      }));
+    }
+    closeHandoffPopover();
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeHandoffPopover);
+  actions.appendChild(ok);
+  actions.appendChild(cancel);
+  pop.appendChild(actions);
+
+  document.body.appendChild(pop);
+  const rect = button.getBoundingClientRect();
+  pop.style.top = `${rect.bottom + 4}px`;
+  pop.style.left = `${Math.max(8, rect.left - 200)}px`;
+  handoffPopover = pop;
+  setTimeout(() => document.addEventListener('click', handleHandoffOutsideClick, true), 0);
+  textarea.focus();
+}
+document.querySelectorAll('.btn-handoff').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openHandoffPopover(btn, parseInt(btn.dataset.source, 10));
+  });
+});
 
 function respondToPermission(req, action) {
   if (action === 'focus') {
