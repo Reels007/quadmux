@@ -1674,8 +1674,55 @@ function connect() {
       if (parkedTasks.delete(data.id)) renderParkSidebar();
     } else if (data.type === 'parked_error') {
       console.error('Parked error:', data.error);
+    } else if (data.type === 'handoff') {
+      showToast(`Handoff: pane ${data.source + 1} → pane ${data.target + 1}`);
+      flashPane(data.source);
+      flashPane(data.target);
+    } else if (data.type === 'handoff_error') {
+      showToast(`Handoff failed: ${data.error}`, true);
     }
   };
+}
+
+// --- Toast (small ephemeral banner) ---
+let toastTimer = null;
+function showToast(text, isError) {
+  let toast = document.getElementById('qm-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'qm-toast';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: #f3f4f6;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+      z-index: 2000;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.style.background = isError ? '#7f1d1d' : '#0f172a';
+  toast.textContent = text;
+  toast.style.opacity = '1';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2200);
+}
+
+function flashPane(idx) {
+  const el = shellEls && shellEls[idx];
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
 }
 
 function applyPaneMeta(p) {
