@@ -333,6 +333,7 @@ def spawn_claude(claude_path, idx, rows=24, cols=80, cwd=None, extra_args=None):
             if extra not in path:
                 path = extra + ":" + path
         os.environ["PATH"] = path
+        os.environ.pop("ANTHROPIC_API_KEY", None)
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
         if cwd:
