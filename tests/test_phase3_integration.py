@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import types
+import uuid
 
 import pytest
 
@@ -122,9 +123,12 @@ def test_main_without_preset_uses_default_shells(qm_module, monkeypatch):
     qm_module.main()
 
     assert len(calls) == 2
-    # No preset = no system prompt
+    # No preset = no system prompt, but every pane still gets a session id
+    # so cost tracking can find its JSONL deterministically
     for c in calls:
-        assert c["extra_args"] == []
+        assert c["extra_args"][:1] == ["--session-id"]
+        uuid.UUID(c["extra_args"][1])
+        assert c["extra_args"][2:] == []
         # No worktree = cwd not forced
         assert c["cwd"] is None
 
