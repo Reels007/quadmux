@@ -9,6 +9,9 @@
 <meta name="server-version" content="__SERVER_VERSION__">
 <title>QuadMux</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Share+Tech+Mono&display=swap">
 <!-- addon-search CSS loaded inline to avoid CDN MIME type error -->
 <style>.xterm-search-decoration { background-color: rgba(255,200,0,0.3); } .xterm-search-decoration-current { background-color: rgba(255,150,0,0.5); }</style>
 <style>
@@ -971,7 +974,28 @@ body {
   .park-card[data-status="parked"]      { border-left-color: #facc15; }
   .park-card[data-status="blocked"]     { border-left-color: #dc2626; }
   .park-card[data-status="in-progress"] { border-left-color: #2563eb; }
+  .park-card[data-status="awaiting"]    { border-left-color: #0284c7; }
   .park-card[data-status="done"]        { border-left-color: #16a34a; opacity: 0.55; }
+  .park-card.overdue {
+    background: linear-gradient(90deg, rgba(249, 115, 22, 0.18) 0%, transparent 60%);
+    box-shadow: inset 3px 0 0 #f97316, 0 0 0 1px rgba(249, 115, 22, 0.4);
+  }
+  .park-card-waiting,
+  .park-card-followup {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(2, 132, 199, 0.10);
+    color: #0c4a8a;
+    border: 1px solid rgba(2, 132, 199, 0.25);
+    margin-right: 4px;
+  }
+  .park-card-followup.due {
+    background: rgba(249, 115, 22, 0.18);
+    color: #9a3412;
+    border-color: rgba(249, 115, 22, 0.5);
+    font-weight: 600;
+  }
   .park-card-title {
     color: #f1f5f9;
     font-weight: 600;
@@ -1012,6 +1036,16 @@ body {
     font-weight: 600;
   }
   .park-card-pane:hover { background: #1d4ed8; }
+  .park-card-priority {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+  .park-card-priority[data-priority="high"] { background: #7f1d1d; color: #fecaca; }
+  .park-card-priority[data-priority="low"]  { background: #1f2937; color: #94a3b8; }
+  .park-card-age { color: #64748b; white-space: nowrap; }
   .park-card-actions { margin-left: auto; display: flex; gap: 4px; }
   .park-card-actions button {
     background: transparent;
@@ -1037,6 +1071,17 @@ body {
     line-height: 1;
   }
   .btn-handoff:hover { background: #f1f5f9; }
+  .btn-park {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #475569;
+    border-radius: 4px;
+    padding: 1px 5px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .btn-park:hover { background: #f1f5f9; }
   .handoff-pop {
     position: absolute;
     z-index: 900;
@@ -1161,6 +1206,905 @@ body {
   .perm-btn.deny:hover  { background: #b91c1c; }
   .perm-btn.focus { background: #475569; color: #fff; }
   .perm-btn.focus:hover { background: #334155; }
+
+  /* ============================================================
+     JARVIS HOLOGRAPHIC SKIN
+     Scoped to body:not(.theme-light) so daytime light theme is untouched.
+     Overlays HUD chrome, glow, scanlines, hex brackets on the existing
+     dark theme without changing layout or JS behaviour.
+     ============================================================ */
+  :root {
+    --jarvis-cyan: #00e5ff;
+    --jarvis-cyan-soft: rgba(0, 229, 255, 0.55);
+    --jarvis-cyan-dim: rgba(0, 229, 255, 0.25);
+    --jarvis-cyan-faint: rgba(0, 229, 255, 0.08);
+    --jarvis-bg: #03080f;
+    --jarvis-bg-2: #061322;
+    --jarvis-ink: #d6f3ff;
+    --jarvis-ink-dim: #6fa3c4;
+  }
+
+  body:not(.theme-light) {
+    background:
+      radial-gradient(ellipse at 50% -20%, rgba(0, 229, 255, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 120%, rgba(0, 119, 181, 0.10) 0%, transparent 60%),
+      linear-gradient(145deg, var(--jarvis-bg) 0%, var(--jarvis-bg-2) 100%);
+    color: var(--jarvis-ink);
+    font-family: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.01em;
+  }
+
+  body:not(.theme-light)::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    background:
+      repeating-linear-gradient(to bottom,
+        rgba(0, 229, 255, 0.025) 0px,
+        rgba(0, 229, 255, 0.025) 1px,
+        transparent 1px,
+        transparent 3px);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+
+  body:not(.theme-light)::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 49;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%);
+  }
+
+  body:not(.theme-light) .gutter-col,
+  body:not(.theme-light) .gutter-row {
+    background: linear-gradient(to bottom, transparent, var(--jarvis-cyan-dim), transparent);
+    border-radius: 0;
+  }
+  body:not(.theme-light) .gutter-row {
+    background: linear-gradient(to right, transparent, var(--jarvis-cyan-dim), transparent);
+  }
+  body:not(.theme-light) .gutter-col:hover,
+  body:not(.theme-light) .gutter-col.dragging,
+  body:not(.theme-light) .gutter-row:hover,
+  body:not(.theme-light) .gutter-row.dragging {
+    background: var(--jarvis-cyan);
+    box-shadow: 0 0 8px var(--jarvis-cyan-soft);
+  }
+
+  body:not(.theme-light) .shell {
+    border: 1px solid var(--jarvis-cyan-dim);
+    border-radius: 4px;
+    background: rgba(3, 14, 28, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow:
+      inset 0 0 24px rgba(0, 229, 255, 0.04),
+      0 0 0 1px rgba(0, 0, 0, 0.4);
+    overflow: visible;
+  }
+  body:not(.theme-light) .shell::before,
+  body:not(.theme-light) .shell::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--jarvis-cyan);
+    pointer-events: none;
+    opacity: 0.7;
+    filter: drop-shadow(0 0 4px var(--jarvis-cyan-soft));
+    z-index: 6;
+  }
+  body:not(.theme-light) .shell::before {
+    top: -1px; left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  body:not(.theme-light) .shell::after {
+    bottom: -1px; right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+  body:not(.theme-light) .shell.active {
+    border-color: var(--jarvis-cyan);
+    box-shadow:
+      0 0 0 1px var(--jarvis-cyan-soft),
+      0 0 28px rgba(0, 229, 255, 0.35),
+      inset 0 0 40px rgba(0, 229, 255, 0.08);
+  }
+  body:not(.theme-light) .shell.active::before,
+  body:not(.theme-light) .shell.active::after {
+    opacity: 1;
+    width: 18px;
+    height: 18px;
+  }
+
+  body:not(.theme-light) .term-container {
+    background: #04080d;
+    border-top: 1px solid var(--jarvis-cyan-faint);
+  }
+
+  body:not(.theme-light) .shell-header {
+    background: linear-gradient(180deg, rgba(0, 229, 255, 0.10) 0%, rgba(3, 14, 28, 0.75) 100%);
+    border-bottom: 1px solid var(--jarvis-cyan-dim);
+    box-shadow: 0 1px 0 var(--jarvis-cyan-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  body:not(.theme-light) .shell-title {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent);
+    font-size: 11px;
+  }
+  body:not(.theme-light) .shell-number {
+    font-family: 'Orbitron', sans-serif;
+    background: var(--accent);
+    color: #02121a;
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    border-radius: 0;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  body:not(.theme-light) .shell-health {
+    box-shadow: 0 0 6px currentColor;
+  }
+  body:not(.theme-light) .shell-health:not(.dead) {
+    background: var(--jarvis-cyan);
+    color: var(--jarvis-cyan);
+  }
+  body:not(.theme-light) .shell-status { color: var(--jarvis-ink-dim); }
+  body:not(.theme-light) .shell-timer { color: var(--jarvis-ink-dim); }
+  body:not(.theme-light) .shell-timer.running {
+    color: var(--jarvis-cyan);
+    background: rgba(0, 229, 255, 0.10);
+    text-shadow: 0 0 4px var(--jarvis-cyan-soft);
+  }
+  body:not(.theme-light) .shell-focus-dot {
+    background: var(--jarvis-cyan);
+    box-shadow: 0 0 8px var(--jarvis-cyan);
+  }
+
+  body:not(.theme-light) .shell-state {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.1em;
+    border: 1px solid currentColor;
+    background: rgba(0, 0, 0, 0.4) !important;
+    color: var(--jarvis-cyan);
+    box-shadow: inset 0 0 8px rgba(0, 229, 255, 0.15);
+  }
+  body:not(.theme-light) .shell-state[data-state="thinking"] {
+    color: #5fb8ff;
+    box-shadow: inset 0 0 10px rgba(95, 184, 255, 0.25), 0 0 8px rgba(95, 184, 255, 0.3);
+  }
+  body:not(.theme-light) .shell-state[data-state="tool_running"] {
+    color: #ffb347;
+    box-shadow: inset 0 0 10px rgba(255, 179, 71, 0.25), 0 0 8px rgba(255, 179, 71, 0.3);
+  }
+  body:not(.theme-light) .shell-state[data-state="awaiting_permission"] {
+    color: #ff5670;
+    box-shadow: inset 0 0 10px rgba(255, 86, 112, 0.3), 0 0 12px rgba(255, 86, 112, 0.5);
+  }
+
+  body:not(.theme-light) .btn-voice {
+    border-color: var(--jarvis-cyan-dim);
+    color: var(--jarvis-cyan);
+  }
+  body:not(.theme-light) .btn-voice:hover {
+    border-color: var(--jarvis-cyan);
+    background: rgba(0, 229, 255, 0.08);
+    box-shadow: 0 0 10px var(--jarvis-cyan-soft);
+  }
+
+  body:not(.theme-light) .input-bar {
+    background: linear-gradient(180deg, rgba(3, 14, 28, 0.85) 0%, rgba(2, 10, 20, 0.95) 100%);
+    border-top: 1px solid var(--jarvis-cyan-dim);
+    box-shadow: 0 -1px 12px rgba(0, 229, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  body:not(.theme-light) #input {
+    background: rgba(0, 8, 20, 0.7);
+    border: 1px solid var(--jarvis-cyan-dim);
+    color: var(--jarvis-ink);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.04em;
+    box-shadow: inset 0 0 10px rgba(0, 229, 255, 0.05);
+  }
+  body:not(.theme-light) #input::placeholder {
+    color: var(--jarvis-ink-dim);
+    letter-spacing: 0.04em;
+  }
+  body:not(.theme-light) #input:focus {
+    border-color: var(--jarvis-cyan);
+    box-shadow: 0 0 0 1px var(--jarvis-cyan-soft), 0 0 16px rgba(0, 229, 255, 0.3), inset 0 0 10px rgba(0, 229, 255, 0.08);
+    outline: none;
+  }
+  body:not(.theme-light) .preview-target {
+    font-family: 'Orbitron', sans-serif;
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    border-radius: 0;
+    box-shadow: 0 0 8px currentColor;
+  }
+  body:not(.theme-light) .preview-arrow { color: var(--jarvis-cyan-soft); }
+  body:not(.theme-light) .preview-cmd { color: var(--jarvis-ink-dim); font-family: 'Share Tech Mono', monospace; }
+  body:not(.theme-light) .mode-hint {
+    color: var(--jarvis-cyan-soft);
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+
+  body:not(.theme-light) .btn {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    border-radius: 0;
+    transition: all 150ms ease;
+  }
+  body:not(.theme-light) .btn-clear,
+  body:not(.theme-light) .btn-layout {
+    background: rgba(0, 229, 255, 0.10);
+    color: var(--jarvis-cyan);
+    border: 1px solid var(--jarvis-cyan-dim);
+    box-shadow: inset 0 0 8px rgba(0, 229, 255, 0.08);
+  }
+  body:not(.theme-light) .btn-clear:hover,
+  body:not(.theme-light) .btn-layout:hover {
+    background: rgba(0, 229, 255, 0.22);
+    box-shadow: 0 0 12px var(--jarvis-cyan-soft), inset 0 0 12px rgba(0, 229, 255, 0.15);
+  }
+  body:not(.theme-light) .btn-mp {
+    background: linear-gradient(135deg, #7c3aed 0%, #00e5ff 100%);
+    color: #02121a;
+    box-shadow: 0 0 12px rgba(124, 58, 237, 0.5), 0 0 12px rgba(0, 229, 255, 0.4);
+  }
+  body:not(.theme-light) .btn-mp:hover { filter: brightness(1.2); }
+  body:not(.theme-light) .btn-mp.busy {
+    background: rgba(124, 58, 237, 0.3);
+    animation: jarvis-busy 1s ease-in-out infinite;
+  }
+  @keyframes jarvis-busy {
+    0%, 100% { box-shadow: 0 0 8px rgba(124, 58, 237, 0.4); }
+    50%      { box-shadow: 0 0 20px rgba(0, 229, 255, 0.6); }
+  }
+  body:not(.theme-light) .btn-exit {
+    background: rgba(220, 38, 38, 0.85);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(220, 38, 38, 0.5);
+  }
+  body:not(.theme-light) .btn-exit:hover { background: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.7); }
+
+  body:not(.theme-light) .status {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  body:not(.theme-light) .status.connected {
+    color: var(--jarvis-cyan);
+    text-shadow: 0 0 6px var(--jarvis-cyan-soft);
+  }
+  body:not(.theme-light) .status.disconnected {
+    color: #ff5670;
+    text-shadow: 0 0 8px rgba(255, 86, 112, 0.6);
+    animation: jarvis-busy 1.5s ease-in-out infinite;
+  }
+
+  body:not(.theme-light) .shortcuts-overlay {
+    background: radial-gradient(ellipse at center, rgba(0, 229, 255, 0.06) 0%, rgba(0, 0, 0, 0.92) 70%);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  body:not(.theme-light) .shortcuts-box {
+    background: rgba(3, 14, 28, 0.92);
+    border: 1px solid var(--jarvis-cyan-dim);
+    border-radius: 4px;
+    box-shadow: 0 0 40px rgba(0, 229, 255, 0.25), inset 0 0 30px rgba(0, 229, 255, 0.04);
+    color: var(--jarvis-ink);
+    position: relative;
+  }
+  body:not(.theme-light) .shortcuts-box::before,
+  body:not(.theme-light) .shortcuts-box::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--jarvis-cyan);
+    filter: drop-shadow(0 0 6px var(--jarvis-cyan-soft));
+  }
+  body:not(.theme-light) .shortcuts-box::before {
+    top: -1px; left: -1px; border-right: none; border-bottom: none;
+  }
+  body:not(.theme-light) .shortcuts-box::after {
+    bottom: -1px; right: -1px; border-left: none; border-top: none;
+  }
+  body:not(.theme-light) .shortcuts-box h3 {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--jarvis-cyan);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px var(--jarvis-cyan-soft);
+  }
+  body:not(.theme-light) .shortcuts-box kbd {
+    background: rgba(0, 229, 255, 0.15);
+    border: 1px solid var(--jarvis-cyan-dim);
+    color: var(--jarvis-cyan);
+    font-family: 'Share Tech Mono', monospace;
+    box-shadow: inset 0 0 4px rgba(0, 229, 255, 0.2);
+  }
+
+  body:not(.theme-light) .perm-banner,
+  body:not(.theme-light) .perm-tray {
+    border: 1px solid var(--jarvis-cyan-dim);
+    background: rgba(3, 14, 28, 0.85);
+    box-shadow: 0 0 18px rgba(0, 229, 255, 0.15);
+  }
+
+  /* ============================================================
+     JARVIS MARK 2 — DAYTIME (brushed titanium + steel blue)
+     Scoped to body.theme-light. Same HUD vocabulary as Mark 1
+     (Orbitron, corner brackets, angular buttons) but in a
+     daylight-readable palette: cool brushed metal background,
+     steel-blue accents, arc-reactor warm highlight on active pane.
+     ============================================================ */
+  body.theme-light {
+    --j2-base:        #eaeef4;
+    --j2-base-2:      #d6dde7;
+    --j2-base-3:      #c4ccd8;
+    --j2-ink:         #0f172a;
+    --j2-ink-dim:     #475569;
+    --j2-ink-faint:   #94a3b8;
+    --j2-steel:       #1e40af;
+    --j2-steel-2:     #2563eb;
+    --j2-steel-soft:  rgba(30, 64, 175, 0.45);
+    --j2-steel-dim:   rgba(30, 64, 175, 0.22);
+    --j2-steel-faint: rgba(30, 64, 175, 0.08);
+    --j2-arc:         #f59e0b;
+    --j2-arc-soft:    rgba(245, 158, 11, 0.5);
+
+    background:
+      radial-gradient(ellipse at 50% -20%, rgba(30, 64, 175, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 120%, rgba(245, 158, 11, 0.08) 0%, transparent 60%),
+      linear-gradient(155deg, var(--j2-base) 0%, var(--j2-base-2) 60%, var(--j2-base-3) 100%);
+    color: var(--j2-ink);
+    font-family: 'Share Tech Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.01em;
+  }
+
+  /* Brushed-metal micro-lines instead of scanlines */
+  body.theme-light::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    background:
+      repeating-linear-gradient(to bottom,
+        rgba(15, 23, 42, 0.035) 0px,
+        rgba(15, 23, 42, 0.035) 1px,
+        transparent 1px,
+        transparent 4px);
+    opacity: 0.55;
+  }
+
+  /* Soft vignette */
+  body.theme-light::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 49;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(30, 64, 175, 0.10) 100%);
+  }
+
+  /* Grid gutters: thin steel rails */
+  body.theme-light .gutter-col,
+  body.theme-light .gutter-row {
+    background: linear-gradient(to bottom, transparent, var(--j2-steel-dim), transparent);
+    border-radius: 0;
+  }
+  body.theme-light .gutter-row {
+    background: linear-gradient(to right, transparent, var(--j2-steel-dim), transparent);
+  }
+  body.theme-light .gutter-col:hover,
+  body.theme-light .gutter-col.dragging,
+  body.theme-light .gutter-row:hover,
+  body.theme-light .gutter-row.dragging {
+    background: var(--j2-steel-2);
+    box-shadow: 0 0 8px var(--j2-steel-soft);
+  }
+
+  /* Shell pane: pearl glass + steel corner brackets */
+  body.theme-light .shell {
+    border: 1px solid var(--j2-steel-dim);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(8px) saturate(1.1);
+    -webkit-backdrop-filter: blur(8px) saturate(1.1);
+    box-shadow:
+      inset 0 0 24px rgba(30, 64, 175, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      0 1px 3px rgba(15, 23, 42, 0.08);
+    overflow: visible;
+  }
+  body.theme-light .shell::before,
+  body.theme-light .shell::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--j2-steel);
+    pointer-events: none;
+    opacity: 0.85;
+    filter: drop-shadow(0 0 3px var(--j2-steel-soft));
+    z-index: 6;
+  }
+  body.theme-light .shell::before {
+    top: -1px; left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  body.theme-light .shell::after {
+    bottom: -1px; right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+  body.theme-light .shell.active {
+    border-color: var(--j2-steel-2);
+    box-shadow:
+      0 0 0 1px var(--j2-steel-soft),
+      0 0 22px rgba(30, 64, 175, 0.22),
+      0 0 30px rgba(245, 158, 11, 0.10),
+      inset 0 0 30px rgba(30, 64, 175, 0.05);
+  }
+  body.theme-light .shell.active::before,
+  body.theme-light .shell.active::after {
+    opacity: 1;
+    width: 18px;
+    height: 18px;
+    border-color: var(--j2-steel-2);
+  }
+
+  /* Terminal interior: keep readable */
+  body.theme-light .term-container {
+    background: #f7f9fc;
+    border-top: 1px solid var(--j2-steel-faint);
+  }
+
+  /* Shell header */
+  body.theme-light .shell-header {
+    background: linear-gradient(180deg, rgba(30, 64, 175, 0.08) 0%, rgba(255, 255, 255, 0.6) 100%);
+    border-bottom: 1px solid var(--j2-steel-dim);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  body.theme-light .shell-title {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-size: 11px;
+  }
+  body.theme-light .shell-number {
+    font-family: 'Orbitron', sans-serif;
+    background: var(--accent);
+    color: #fff;
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    border-radius: 0;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  body.theme-light .shell-health {
+    box-shadow: 0 0 4px currentColor;
+  }
+  body.theme-light .shell-health:not(.dead) {
+    background: var(--j2-steel-2);
+    color: var(--j2-steel-2);
+  }
+  body.theme-light .shell-status { color: var(--j2-ink-dim); }
+  body.theme-light .shell-timer { color: var(--j2-ink-dim); }
+  body.theme-light .shell-timer.running {
+    color: var(--j2-steel);
+    background: rgba(30, 64, 175, 0.10);
+    text-shadow: none;
+  }
+  body.theme-light .shell-focus-dot {
+    background: var(--j2-arc);
+    box-shadow: 0 0 8px var(--j2-arc-soft);
+  }
+
+  /* State pill */
+  body.theme-light .shell-state {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.1em;
+    border: 1px solid currentColor;
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: var(--j2-steel);
+    box-shadow: inset 0 0 8px rgba(30, 64, 175, 0.10);
+  }
+  body.theme-light .shell-state[data-state="thinking"] {
+    color: #1d4ed8;
+    box-shadow: inset 0 0 10px rgba(29, 78, 216, 0.18), 0 0 6px rgba(29, 78, 216, 0.25);
+  }
+  body.theme-light .shell-state[data-state="tool_running"] {
+    color: #b45309;
+    box-shadow: inset 0 0 10px rgba(180, 83, 9, 0.18), 0 0 6px rgba(245, 158, 11, 0.35);
+  }
+  body.theme-light .shell-state[data-state="awaiting_permission"] {
+    color: #b91c1c;
+    box-shadow: inset 0 0 10px rgba(185, 28, 28, 0.20), 0 0 10px rgba(220, 38, 38, 0.40);
+  }
+
+  /* Voice button */
+  body.theme-light .btn-voice {
+    border-color: var(--j2-steel-dim);
+    color: var(--j2-steel);
+  }
+  body.theme-light .btn-voice:hover {
+    border-color: var(--j2-steel-2);
+    background: rgba(30, 64, 175, 0.08);
+    box-shadow: 0 0 8px var(--j2-steel-soft);
+  }
+
+  /* Input bar */
+  body.theme-light .input-bar {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(214, 221, 231, 0.92) 100%);
+    border-top: 1px solid var(--j2-steel-dim);
+    box-shadow: 0 -1px 10px rgba(30, 64, 175, 0.10);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  body.theme-light #input {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid var(--j2-steel-dim);
+    color: var(--j2-ink);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.04em;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+  body.theme-light #input::placeholder {
+    color: var(--j2-ink-faint);
+    letter-spacing: 0.04em;
+  }
+  body.theme-light #input:focus {
+    border-color: var(--j2-steel-2);
+    box-shadow: 0 0 0 1px var(--j2-steel-soft), 0 0 12px rgba(30, 64, 175, 0.20), inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    outline: none;
+  }
+  body.theme-light .preview-target {
+    font-family: 'Orbitron', sans-serif;
+    clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%);
+    border-radius: 0;
+    box-shadow: 0 0 6px currentColor;
+  }
+  body.theme-light .preview-arrow { color: var(--j2-steel-soft); }
+  body.theme-light .preview-cmd { color: var(--j2-ink-dim); font-family: 'Share Tech Mono', monospace; }
+  body.theme-light .mode-hint {
+    color: var(--j2-steel);
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+
+  /* Buttons: angular HUD cut, steel-blue fills */
+  body.theme-light .btn {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    border-radius: 0;
+    transition: all 150ms ease;
+  }
+  body.theme-light .btn-clear,
+  body.theme-light .btn-layout {
+    background: rgba(30, 64, 175, 0.10);
+    color: var(--j2-steel);
+    border: 1px solid var(--j2-steel-dim);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  body.theme-light .btn-clear:hover,
+  body.theme-light .btn-layout:hover {
+    background: rgba(30, 64, 175, 0.22);
+    box-shadow: 0 0 10px var(--j2-steel-soft), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  body.theme-light .btn-mp {
+    background: linear-gradient(135deg, var(--j2-steel) 0%, var(--j2-arc) 100%);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(30, 64, 175, 0.35), 0 0 10px rgba(245, 158, 11, 0.30);
+  }
+  body.theme-light .btn-mp:hover { filter: brightness(1.08); }
+  body.theme-light .btn-mp.busy {
+    background: rgba(30, 64, 175, 0.25);
+    animation: j2-busy 1s ease-in-out infinite;
+  }
+  @keyframes j2-busy {
+    0%, 100% { box-shadow: 0 0 8px rgba(30, 64, 175, 0.35); }
+    50%      { box-shadow: 0 0 18px rgba(245, 158, 11, 0.55); }
+  }
+  body.theme-light .btn-exit {
+    background: rgba(185, 28, 28, 0.90);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(185, 28, 28, 0.45);
+  }
+  body.theme-light .btn-exit:hover { background: #dc2626; box-shadow: 0 0 14px rgba(220, 38, 38, 0.55); }
+
+  /* Connection status */
+  body.theme-light .status {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  body.theme-light .status.connected {
+    color: var(--j2-steel);
+    text-shadow: 0 0 4px var(--j2-steel-soft);
+  }
+  body.theme-light .status.disconnected {
+    color: #b91c1c;
+    text-shadow: 0 0 6px rgba(185, 28, 28, 0.5);
+    animation: j2-busy 1.5s ease-in-out infinite;
+  }
+
+  /* Shortcuts overlay */
+  body.theme-light .shortcuts-overlay {
+    background: radial-gradient(ellipse at center, rgba(30, 64, 175, 0.05) 0%, rgba(234, 238, 244, 0.95) 70%);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  body.theme-light .shortcuts-box {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--j2-steel-dim);
+    border-radius: 4px;
+    box-shadow: 0 0 30px rgba(30, 64, 175, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    color: var(--j2-ink);
+    position: relative;
+  }
+  body.theme-light .shortcuts-box::before,
+  body.theme-light .shortcuts-box::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--j2-steel-2);
+    filter: drop-shadow(0 0 4px var(--j2-steel-soft));
+  }
+  body.theme-light .shortcuts-box::before {
+    top: -1px; left: -1px; border-right: none; border-bottom: none;
+  }
+  body.theme-light .shortcuts-box::after {
+    bottom: -1px; right: -1px; border-left: none; border-top: none;
+  }
+  body.theme-light .shortcuts-box h3 {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--j2-steel);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px var(--j2-steel-soft);
+  }
+  body.theme-light .shortcuts-box kbd {
+    background: rgba(30, 64, 175, 0.10);
+    border: 1px solid var(--j2-steel-dim);
+    color: var(--j2-steel);
+    font-family: 'Share Tech Mono', monospace;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  body.theme-light .perm-banner,
+  body.theme-light .perm-tray {
+    border: 1px solid var(--j2-steel-dim);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 14px rgba(30, 64, 175, 0.12);
+  }
+
+  /* ============================================================
+     MARK 2 STARK PUSH — hex lattice, CAD brackets, arc reactor,
+     edge ticks, telemetry watermark. Brighter electric-cyan palette.
+     ============================================================ */
+  body.theme-light {
+    --j2-steel:       #0c4a8a;
+    --j2-steel-2:     #0284c7;
+    --j2-steel-soft:  rgba(2, 132, 199, 0.55);
+    --j2-steel-dim:   rgba(2, 132, 199, 0.28);
+    --j2-steel-faint: rgba(2, 132, 199, 0.10);
+    --j2-arc:         #f97316;
+    --j2-arc-soft:    rgba(249, 115, 22, 0.55);
+  }
+
+  /* Hex lattice backdrop replaces the brushed scanlines */
+  body.theme-light::before {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 96' width='56' height='96'><g fill='none' stroke='%230284c7' stroke-width='0.6' opacity='0.18'><path d='M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z'/><path d='M28 32 L56 48 L56 80 L28 96 L0 80 L0 48 Z'/></g></svg>");
+    background-size: 56px 96px;
+    background-repeat: repeat;
+    mix-blend-mode: multiply;
+    opacity: 0.75;
+  }
+
+  /* CAD multi-segment corner brackets via SVG background — replace simple L brackets */
+  body.theme-light .shell::before,
+  body.theme-light .shell::after {
+    display: none;
+  }
+  body.theme-light .shell {
+    background-color: rgba(255, 255, 255, 0.55);
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32'><g fill='none' stroke='%230c4a8a' stroke-width='1.4' opacity='0.85'><path d='M0 16 L0 0 L16 0'/><path d='M5 22 L5 5 L22 5' stroke-width='0.8' opacity='0.45'/><circle cx='2.5' cy='2.5' r='1.4' fill='%230c4a8a' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32'><g fill='none' stroke='%230c4a8a' stroke-width='1.4' opacity='0.85'><path d='M32 16 L32 0 L16 0'/><path d='M27 22 L27 5 L10 5' stroke-width='0.8' opacity='0.45'/><circle cx='29.5' cy='2.5' r='1.4' fill='%230c4a8a' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32'><g fill='none' stroke='%230c4a8a' stroke-width='1.4' opacity='0.85'><path d='M0 16 L0 32 L16 32'/><path d='M5 10 L5 27 L22 27' stroke-width='0.8' opacity='0.45'/><circle cx='2.5' cy='29.5' r='1.4' fill='%230c4a8a' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32'><g fill='none' stroke='%230c4a8a' stroke-width='1.4' opacity='0.85'><path d='M32 16 L32 32 L16 32'/><path d='M27 10 L27 27 L10 27' stroke-width='0.8' opacity='0.45'/><circle cx='29.5' cy='29.5' r='1.4' fill='%230c4a8a' stroke='none'/></g></svg>");
+    background-position: top left, top right, bottom left, bottom right;
+    background-repeat: no-repeat;
+    background-size: 32px 32px;
+  }
+  body.theme-light .shell.active {
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' width='36' height='36'><g fill='none' stroke='%230284c7' stroke-width='1.6'><path d='M0 18 L0 0 L18 0'/><path d='M5 24 L5 5 L24 5' stroke-width='1' opacity='0.7'/><path d='M10 28 L10 10 L28 10' stroke-width='0.7' opacity='0.4'/><circle cx='2.5' cy='2.5' r='1.8' fill='%23f97316' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' width='36' height='36'><g fill='none' stroke='%230284c7' stroke-width='1.6'><path d='M36 18 L36 0 L18 0'/><path d='M31 24 L31 5 L12 5' stroke-width='1' opacity='0.7'/><path d='M26 28 L26 10 L8 10' stroke-width='0.7' opacity='0.4'/><circle cx='33.5' cy='2.5' r='1.8' fill='%23f97316' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' width='36' height='36'><g fill='none' stroke='%230284c7' stroke-width='1.6'><path d='M0 18 L0 36 L18 36'/><path d='M5 12 L5 31 L24 31' stroke-width='1' opacity='0.7'/><path d='M10 8 L10 26 L28 26' stroke-width='0.7' opacity='0.4'/><circle cx='2.5' cy='33.5' r='1.8' fill='%23f97316' stroke='none'/></g></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' width='36' height='36'><g fill='none' stroke='%230284c7' stroke-width='1.6'><path d='M36 18 L36 36 L18 36'/><path d='M31 12 L31 31 L12 31' stroke-width='1' opacity='0.7'/><path d='M26 8 L26 26 L8 26' stroke-width='0.7' opacity='0.4'/><circle cx='33.5' cy='33.5' r='1.8' fill='%23f97316' stroke='none'/></g></svg>");
+    background-size: 36px 36px;
+    box-shadow:
+      0 0 0 1px var(--j2-steel-soft),
+      0 0 26px rgba(2, 132, 199, 0.30),
+      0 0 40px rgba(249, 115, 22, 0.15),
+      inset 0 0 36px rgba(2, 132, 199, 0.07);
+  }
+
+  /* Edge tick rail along bottom of shell header — CAD-measurement vibe */
+  body.theme-light .shell-header {
+    position: relative;
+  }
+  body.theme-light .shell-header::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 5px;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(to right,
+        transparent 0px, transparent 11px,
+        rgba(12, 74, 138, 0.45) 11px, rgba(12, 74, 138, 0.45) 12px,
+        transparent 12px, transparent 55px,
+        rgba(2, 132, 199, 0.75) 55px, rgba(2, 132, 199, 0.75) 56px,
+        transparent 56px, transparent 66px);
+    background-size: 66px 100%;
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+  }
+
+  /* Arc-reactor pulse on shell number hex */
+  body.theme-light .shell-number {
+    position: relative;
+    overflow: visible;
+  }
+  body.theme-light .shell-number::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid var(--j2-arc);
+    opacity: 0;
+    animation: j2-arc-pulse 2.8s cubic-bezier(0.2, 0.6, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+  body.theme-light .shell.active .shell-number::before {
+    border-color: var(--j2-arc);
+    animation-duration: 1.6s;
+  }
+  @keyframes j2-arc-pulse {
+    0%   { transform: scale(0.55); opacity: 0.0; }
+    20%  { opacity: 0.6; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+
+  /* Active shell focus-dot: arc reactor double-ring */
+  body.theme-light .shell.active .shell-focus-dot {
+    background: var(--j2-arc);
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.6),
+      0 0 0 3px var(--j2-arc-soft),
+      0 0 12px var(--j2-arc);
+  }
+
+  /* JARVIS watermark in input-bar */
+  body.theme-light .input-bar {
+    position: relative;
+  }
+  body.theme-light .input-bar::after {
+    content: 'JARVIS // MARK II';
+    position: absolute;
+    right: 16px;
+    top: 3px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.45em;
+    color: var(--j2-steel);
+    opacity: 0.32;
+    pointer-events: none;
+    text-transform: uppercase;
+    text-shadow: 0 0 4px var(--j2-steel-soft);
+  }
+
+  /* Brighten state pill colours to match electric palette */
+  body.theme-light .shell-state {
+    color: var(--j2-steel-2);
+    box-shadow: inset 0 0 8px rgba(2, 132, 199, 0.14);
+  }
+  body.theme-light .status.connected {
+    color: var(--j2-steel-2);
+    text-shadow: 0 0 5px var(--j2-steel-soft);
+  }
+
+  /* Multi-pane button: brighter electric gradient */
+  body.theme-light .btn-mp {
+    background: linear-gradient(135deg, var(--j2-steel-2) 0%, var(--j2-arc) 100%);
+    box-shadow: 0 0 12px rgba(2, 132, 199, 0.40), 0 0 12px rgba(249, 115, 22, 0.35);
+  }
+
+  /* Targeting reticle — only on active shell's terminal area.
+     Crosshair lines from the four edges plus a hex center reticle
+     with an amber arc-reactor dot. Subtle pulse, no rotation, so
+     it doesn't distract from streaming text. */
+  body.theme-light .shell.active .term-container {
+    position: relative;
+  }
+  body.theme-light .shell.active .term-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    background-image:
+      linear-gradient(to right,
+        transparent 0%,
+        rgba(2, 132, 199, 0.05) 6%,
+        rgba(2, 132, 199, 0.18) 40%,
+        transparent 47%,
+        transparent 53%,
+        rgba(2, 132, 199, 0.18) 60%,
+        rgba(2, 132, 199, 0.05) 94%,
+        transparent 100%),
+      linear-gradient(to bottom,
+        transparent 0%,
+        rgba(2, 132, 199, 0.05) 6%,
+        rgba(2, 132, 199, 0.18) 40%,
+        transparent 47%,
+        transparent 53%,
+        rgba(2, 132, 199, 0.18) 60%,
+        rgba(2, 132, 199, 0.05) 94%,
+        transparent 100%);
+    background-size: 100% 1px, 1px 100%;
+    background-position: center, center;
+    background-repeat: no-repeat;
+    animation: j2-reticle-pulse 3.2s ease-in-out infinite;
+  }
+  body.theme-light .shell.active .term-container::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 72px;
+    height: 72px;
+    margin: -36px 0 0 -36px;
+    pointer-events: none;
+    z-index: 6;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' width='72' height='72'><g fill='none' stroke='%230284c7' stroke-width='1' opacity='0.65'><circle cx='36' cy='36' r='28' stroke-dasharray='2 3' opacity='0.55'/><circle cx='36' cy='36' r='20' stroke-dasharray='1 2' opacity='0.4'/><polygon points='36,24 46,30 46,42 36,48 26,42 26,30'/><line x1='36' y1='8'  x2='36' y2='18' stroke-width='0.8' opacity='0.8'/><line x1='36' y1='54' x2='36' y2='64' stroke-width='0.8' opacity='0.8'/><line x1='8'  y1='36' x2='18' y2='36' stroke-width='0.8' opacity='0.8'/><line x1='54' y1='36' x2='64' y2='36' stroke-width='0.8' opacity='0.8'/><circle cx='36' cy='36' r='1.8' fill='%23f97316' stroke='none'/></g></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    animation: j2-reticle-pulse 3.2s ease-in-out infinite;
+  }
+  @keyframes j2-reticle-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 0.95; }
+  }
 </style>
 </head>
 <body>
@@ -1226,6 +2170,7 @@ body {
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="0" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-park" data-shell="0" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-0" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1251,6 +2196,7 @@ body {
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="1" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-park" data-shell="1" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-1" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1276,6 +2222,7 @@ body {
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="2" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-park" data-shell="2" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-2" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1299,6 +2246,7 @@ body {
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="3" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-park" data-shell="3" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-3" title="alive" aria-label="alive"></span>
       </div>
     </div>
@@ -1494,11 +2442,19 @@ for (let i = 0; i < 4; i++) {
     });
   }
 
-  shellEls[i].addEventListener('click', (e) => {
-    if (e.target.classList.contains('shell-title') || e.target.closest('.shell-search')) return;
+  // Press anywhere in the pane -> cursor lands in that pane's terminal, so a
+  // single click on any part (terminal body, padding, header, status row)
+  // starts typing into that Claude session. mousedown + capture phase means we
+  // win the focus even when xterm's own mouse tracking would swallow a later
+  // click, and even when the press becomes a drag (no click event fires then).
+  // We never preventDefault, so terminal text-selection still works.
+  shellEls[i].addEventListener('mousedown', (e) => {
+    // Let the rename field and the search box keep their own focus/selection.
+    if (e.target.closest('.shell-title') || e.target.closest('.shell-search')) return;
     focusLocked = true;
-    setActiveShell(i);
-  });
+    if (activeShell === i) terms[i].focus();
+    else setActiveShell(i);
+  }, true);
 
   // File drop -> upload over WS -> server returns absolute path -> typed into this pane.
   shellEls[i].addEventListener('dragenter', (e) => {
@@ -2401,11 +3357,13 @@ const parkSide = document.getElementById('park-side');
 const parkBody = document.getElementById('park-body');
 const parkAddBtn = document.getElementById('park-add');
 let parkFormOpen = false;
+let parkFormDefaults = null;
 
 parkToggleBtn.addEventListener('click', () => {
   parkSide.classList.toggle('open');
 });
 parkAddBtn.addEventListener('click', () => {
+  parkFormDefaults = null;
   parkFormOpen = true;
   renderParkSidebar();
   const titleInput = document.getElementById('park-form-title');
@@ -2424,9 +3382,18 @@ function renderParkSidebar() {
   if (parkFormOpen) parkBody.appendChild(buildParkForm());
 
   const tasks = Array.from(parkedTasks.values()).sort((a, b) => {
-    // done last, then by status priority, then by updated desc
-    const order = { 'in-progress': 0, blocked: 1, parked: 2, done: 3 };
-    return (order[a.status] - order[b.status]) || (b.updated - a.updated);
+    // overdue first, done last, then priority (high>normal>low), then oldest first
+    const now = Date.now();
+    const overdueA = a.follow_up_at && new Date(a.follow_up_at).getTime() <= now && a.status !== 'done' ? 0 : 1;
+    const overdueB = b.follow_up_at && new Date(b.follow_up_at).getTime() <= now && b.status !== 'done' ? 0 : 1;
+    if (overdueA !== overdueB) return overdueA - overdueB;
+    const doneA = a.status === 'done' ? 1 : 0;
+    const doneB = b.status === 'done' ? 1 : 0;
+    if (doneA !== doneB) return doneA - doneB;
+    const prio = { high: 0, normal: 1, low: 2 };
+    const pA = prio[a.priority] ?? 1;
+    const pB = prio[b.priority] ?? 1;
+    return (pA - pB) || (a.created - b.created);
   });
 
   if (tasks.length === 0 && !parkFormOpen) {
@@ -2453,7 +3420,7 @@ function buildParkForm(editing) {
   titleInput.id = 'park-form-title';
   titleInput.type = 'text';
   titleInput.maxLength = 200;
-  titleInput.value = editing?.title || '';
+  titleInput.value = editing?.title || parkFormDefaults?.title || '';
   wrap.appendChild(titleInput);
 
   const noteLabel = document.createElement('label');
@@ -2473,7 +3440,7 @@ function buildParkForm(editing) {
   statusLabel.textContent = 'Status';
   statusBox.appendChild(statusLabel);
   const statusSelect = document.createElement('select');
-  ['parked', 'in-progress', 'blocked', 'done'].forEach(s => {
+  ['parked', 'in-progress', 'awaiting', 'blocked', 'done'].forEach(s => {
     const o = document.createElement('option');
     o.value = s; o.textContent = s;
     if ((editing?.status || 'parked') === s) o.selected = true;
@@ -2481,6 +3448,20 @@ function buildParkForm(editing) {
   });
   statusBox.appendChild(statusSelect);
   row.appendChild(statusBox);
+
+  const prioBox = document.createElement('div');
+  const prioLabel = document.createElement('label');
+  prioLabel.textContent = 'Priority';
+  prioBox.appendChild(prioLabel);
+  const prioSelect = document.createElement('select');
+  ['high', 'normal', 'low'].forEach(p => {
+    const o = document.createElement('option');
+    o.value = p; o.textContent = p;
+    if ((editing?.priority || 'normal') === p) o.selected = true;
+    prioSelect.appendChild(o);
+  });
+  prioBox.appendChild(prioSelect);
+  row.appendChild(prioBox);
 
   const paneBox = document.createElement('div');
   const paneLabel = document.createElement('label');
@@ -2494,12 +3475,31 @@ function buildParkForm(editing) {
     const o = document.createElement('option');
     o.value = i; o.textContent = `Pane ${i + 1}`;
     if (editing && editing.pane === i) o.selected = true;
+    else if (!editing && parkFormDefaults?.pane === i) o.selected = true;
     paneSelect.appendChild(o);
   }
   paneBox.appendChild(paneSelect);
   row.appendChild(paneBox);
 
   wrap.appendChild(row);
+
+  const waitingLabel = document.createElement('label');
+  waitingLabel.textContent = 'Waiting on (optional)';
+  wrap.appendChild(waitingLabel);
+  const waitingInput = document.createElement('input');
+  waitingInput.type = 'text';
+  waitingInput.maxLength = 200;
+  waitingInput.placeholder = 'e.g. Krystina reply, Pete intro, KYC docs';
+  waitingInput.value = editing?.waiting_on || '';
+  wrap.appendChild(waitingInput);
+
+  const followLabel = document.createElement('label');
+  followLabel.textContent = 'Follow up at (optional)';
+  wrap.appendChild(followLabel);
+  const followInput = document.createElement('input');
+  followInput.type = 'datetime-local';
+  followInput.value = editing?.follow_up_at || '';
+  wrap.appendChild(followInput);
 
   const actions = document.createElement('div');
   actions.className = 'park-form-actions';
@@ -2513,7 +3513,10 @@ function buildParkForm(editing) {
       title,
       note: noteInput.value,
       status: statusSelect.value,
+      priority: prioSelect.value,
       pane: paneSelect.value === '' ? null : parseInt(paneSelect.value, 10),
+      waiting_on: waitingInput.value,
+      follow_up_at: followInput.value || null,
     };
     if (editing) {
       ws.send(JSON.stringify({ type: 'parked_update', id: editing.id, ...payload }));
@@ -2521,6 +3524,7 @@ function buildParkForm(editing) {
       ws.send(JSON.stringify({ type: 'parked_add', ...payload }));
     }
     parkFormOpen = false;
+    parkFormDefaults = null;
     renderParkSidebar();
   });
   const cancel = document.createElement('button');
@@ -2528,6 +3532,7 @@ function buildParkForm(editing) {
   cancel.textContent = 'Cancel';
   cancel.addEventListener('click', () => {
     parkFormOpen = false;
+    parkFormDefaults = null;
     renderParkSidebar();
   });
   actions.appendChild(save);
@@ -2541,6 +3546,10 @@ function buildParkCard(t) {
   card.className = 'park-card';
   card.dataset.status = t.status;
 
+  const followTs = t.follow_up_at ? new Date(t.follow_up_at).getTime() : null;
+  const isOverdue = followTs && followTs <= Date.now() && t.status !== 'done';
+  if (isOverdue) card.classList.add('overdue');
+
   const title = document.createElement('div');
   title.className = 'park-card-title';
   title.textContent = t.title;
@@ -2553,6 +3562,28 @@ function buildParkCard(t) {
     card.appendChild(note);
   }
 
+  if (t.waiting_on || t.follow_up_at) {
+    const extra = document.createElement('div');
+    extra.className = 'park-card-extra';
+    if (t.waiting_on) {
+      const w = document.createElement('span');
+      w.className = 'park-card-waiting';
+      w.textContent = 'waiting on: ' + t.waiting_on;
+      extra.appendChild(w);
+    }
+    if (t.follow_up_at) {
+      const f = document.createElement('span');
+      f.className = 'park-card-followup' + (isOverdue ? ' due' : '');
+      const d = new Date(t.follow_up_at);
+      const fmt = isNaN(d) ? t.follow_up_at :
+        d.toLocaleString(undefined, { month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', hour12: false });
+      f.textContent = (isOverdue ? 'due ' : 'follow up ') + fmt;
+      extra.appendChild(f);
+    }
+    card.appendChild(extra);
+  }
+
   const meta = document.createElement('div');
   meta.className = 'park-card-meta';
 
@@ -2560,6 +3591,23 @@ function buildParkCard(t) {
   statusPill.className = 'park-card-status';
   statusPill.textContent = t.status;
   meta.appendChild(statusPill);
+
+  const prio = t.priority || 'normal';
+  if (prio !== 'normal') {
+    const prioPill = document.createElement('span');
+    prioPill.className = 'park-card-priority';
+    prioPill.dataset.priority = prio;
+    prioPill.textContent = prio;
+    meta.appendChild(prioPill);
+  }
+
+  if (t.created) {
+    const age = document.createElement('span');
+    age.className = 'park-card-age';
+    age.textContent = formatParkAge(t.created);
+    age.title = new Date(t.created * 1000).toLocaleString();
+    meta.appendChild(age);
+  }
 
   if (typeof t.pane === 'number') {
     const paneChip = document.createElement('span');
@@ -2576,7 +3624,7 @@ function buildParkCard(t) {
   cycleBtn.textContent = 'Next';
   cycleBtn.title = 'Cycle status';
   cycleBtn.addEventListener('click', () => {
-    const order = ['parked', 'in-progress', 'blocked', 'done'];
+    const order = ['parked', 'in-progress', 'awaiting', 'blocked', 'done'];
     const next = order[(order.indexOf(t.status) + 1) % order.length];
     ws.send(JSON.stringify({ type: 'parked_update', id: t.id, status: next }));
   });
@@ -2605,6 +3653,13 @@ function buildParkCard(t) {
 function editParkedInline(card, t) {
   const form = buildParkForm(t);
   card.replaceWith(form);
+}
+
+function formatParkAge(createdEpoch) {
+  const secs = Math.max(0, Date.now() / 1000 - createdEpoch);
+  if (secs < 3600) return Math.max(1, Math.round(secs / 60)) + 'm';
+  if (secs < 86400) return Math.round(secs / 3600) + 'h';
+  return Math.round(secs / 86400) + 'd';
 }
 
 // --- Handoff popover (phase 4) ---
@@ -2689,6 +3744,20 @@ document.querySelectorAll('.btn-handoff').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
     openHandoffPopover(btn, parseInt(btn.dataset.source, 10));
+  });
+});
+
+document.querySelectorAll('.btn-park').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const idx = parseInt(btn.dataset.shell, 10);
+    const titleEl = document.querySelector(`.shell-title[data-shell="${idx}"]`);
+    parkFormDefaults = { pane: idx, title: (titleEl?.textContent || '').trim() };
+    parkFormOpen = true;
+    parkSide.classList.add('open');
+    renderParkSidebar();
+    const input = document.getElementById('park-form-title');
+    if (input) { input.focus(); input.select(); }
   });
 });
 

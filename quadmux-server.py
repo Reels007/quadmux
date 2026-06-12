@@ -547,13 +547,29 @@ async def cost_poll_loop():
             now = time.time()
             if now - last_lookup >= SESSION_LOOKUP_RETRY_INTERVAL:
                 last_lookup = now
-                cwds = [(pane_meta[i].get("cwd") if i < len(pane_meta) else "") or ""
+                # Panes spawned without a preset inherit the server's cwd.
+                default_cwd = os.getcwd()
+                cwds = [(pane_meta[i].get("cwd") if i < len(pane_meta) else "") or default_cwd
                         for i in range(NUM_SHELLS)]
-                paths = costs_mod.assign_session_files(cwds)
-                for i, p in enumerate(paths):
-                    if cost_trackers[i] and not cost_trackers[i].path and p:
-                        cost_trackers[i].attach(p)
-                        print(f"  Cost: pane {i+1} attached to {p}", flush=True)
+                sids = [(pane_meta[i].get("session_id") if i < len(pane_meta) else "") or ""
+                        for i in range(NUM_SHELLS)]
+                # Deterministic: each pane was spawned with --session-id, so its
+                # JSONL filename is known exactly.
+                for i, t in enumerate(cost_trackers):
+                    if t and not t.path and sids[i]:
+                        p = costs_mod.session_file_for_id(cwds[i], sids[i])
+                        if p:
+                            t.attach(p)
+                            print(f"  Cost: pane {i+1} attached to {p}", flush=True)
+                # Fallback for panes without a session id: newest-first by cwd.
+                if any(t and not t.path and not sids[i]
+                       for i, t in enumerate(cost_trackers)):
+                    paths = costs_mod.assign_session_files(cwds)
+                    for i, p in enumerate(paths):
+                        if (cost_trackers[i] and not cost_trackers[i].path
+                                and not sids[i] and p):
+                            cost_trackers[i].attach(p)
+                            print(f"  Cost: pane {i+1} attached to {p}", flush=True)
         changed = False
         for t in cost_trackers:
             if t and t.poll():
@@ -752,6 +768,9 @@ async def handler(ws):
                         note=data.get("note", ""),
                         status=data.get("status", "parked"),
                         pane=data.get("pane"),
+                        waiting_on=data.get("waiting_on", ""),
+                        follow_up_at=data.get("follow_up_at"),
+                        priority=data.get("priority", "normal"),
                     )
                     await _broadcast_parked_update(task, action="add")
                 except ValueError as e:
@@ -761,7 +780,9 @@ async def handler(ws):
                 tid = data.get("id")
                 if not isinstance(tid, int):
                     continue
-                fields = {k: data[k] for k in ("title", "note", "status", "pane")
+                fields = {k: data[k] for k in
+                          ("title", "note", "status", "pane",
+                           "waiting_on", "follow_up_at", "priority")
                           if k in data}
                 updated = parked_mod.update_task(tid, **fields)
                 if updated:
@@ -1086,6 +1107,11 @@ def main():
         cwd = meta.get("cwd") or None
         sys_prompt = meta.get("system_prompt") or ""
         extra_args = ["--append-system-prompt", sys_prompt] if sys_prompt else []
+        # Fixed session id so the cost tracker can find this pane's JSONL
+        # deterministically (panes sharing a cwd are otherwise ambiguous).
+        sid = str(uuid.uuid4())
+        meta["session_id"] = sid
+        extra_args += ["--session-id", sid]
         try:
             pid, master_fd = spawn_claude(claude_path, i, cwd=cwd, extra_args=extra_args)
         except RuntimeError as e:

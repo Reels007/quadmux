@@ -59,30 +59,34 @@ def _encoded_cwd(cwd: str) -> str:
     return os.path.abspath(cwd).replace("/", "-")
 
 
+CWD_SCAN_LINES = 20  # Claude writes header records (last-prompt, mode, ...) before any cwd
+
+
 def _scan_jsonl_files(proj_dir: str, target: str):
-    """Yield (mtime, path) for every .jsonl in proj_dir whose first-line cwd matches."""
+    """Yield (mtime, path) for every .jsonl in proj_dir whose session cwd matches."""
     if not os.path.isdir(proj_dir):
         return
     for name in os.listdir(proj_dir):
         if not name.endswith(".jsonl"):
             continue
         full = os.path.join(proj_dir, name)
+        sess_cwd = None
         try:
             with open(full, encoding="utf-8", errors="replace") as f:
-                first = f.readline()
+                for _ in range(CWD_SCAN_LINES):
+                    line = f.readline()
+                    if not line:
+                        break
+                    try:
+                        val = json.loads(line).get("cwd")
+                    except (json.JSONDecodeError, AttributeError):
+                        continue
+                    if val:
+                        sess_cwd = val
+                        break
         except OSError:
             continue
-        if not first.strip():
-            continue
-        try:
-            sess_cwd = json.loads(first).get("cwd")
-        except (json.JSONDecodeError, AttributeError):
-            sess_cwd = None
-        if sess_cwd and os.path.abspath(sess_cwd) != target:
-            continue
-        if not sess_cwd:
-            # File has no cwd in its first line; only accept if we already
-            # know we're scanning the right dir (caller's responsibility).
+        if not sess_cwd or os.path.abspath(sess_cwd) != target:
             continue
         try:
             mtime = os.path.getmtime(full)
@@ -113,6 +117,24 @@ def session_files_for_cwd(cwd: str) -> List[str]:
             files.extend(_scan_jsonl_files(sub_path, target))
     files.sort(reverse=True)
     return [f[1] for f in files]
+
+
+def session_file_for_id(cwd: str, session_id: str) -> Optional[str]:
+    """Path of <session_id>.jsonl for the given cwd, or None if not written yet."""
+    if not session_id:
+        return None
+    name = f"{session_id}.jsonl"
+    if cwd:
+        fast = os.path.join(PROJECTS_DIR, _encoded_cwd(cwd), name)
+        if os.path.exists(fast):
+            return fast
+    if os.path.isdir(PROJECTS_DIR):
+        # Encoded-path mismatch fallback: scan every project subdir.
+        for sub in os.listdir(PROJECTS_DIR):
+            full = os.path.join(PROJECTS_DIR, sub, name)
+            if os.path.exists(full):
+                return full
+    return None
 
 
 def assign_session_files(pane_cwds: List[str]) -> List[Optional[str]]:

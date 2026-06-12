@@ -24,7 +24,8 @@ import time
 from typing import Optional, List
 
 PARKED_PATH = os.path.expanduser("~/.quadmux/parked.json")
-VALID_STATUSES = {"parked", "blocked", "in-progress", "done"}
+VALID_STATUSES = {"parked", "blocked", "in-progress", "awaiting", "done"}
+VALID_PRIORITIES = {"high", "normal", "low"}
 
 _lock = threading.Lock()
 
@@ -56,12 +57,16 @@ def list_tasks() -> List[dict]:
 
 
 def add_task(title: str, note: str = "", status: str = "parked",
-             pane: Optional[int] = None) -> dict:
+             pane: Optional[int] = None, waiting_on: str = "",
+             follow_up_at: Optional[str] = None,
+             priority: str = "normal") -> dict:
     title = (title or "").strip()
     if not title:
         raise ValueError("title required")
     if status not in VALID_STATUSES:
         status = "parked"
+    if priority not in VALID_PRIORITIES:
+        priority = "normal"
     now = time.time()
     with _lock:
         data = _load_raw()
@@ -70,7 +75,10 @@ def add_task(title: str, note: str = "", status: str = "parked",
             "title": title[:200],
             "note": (note or "").strip()[:2000],
             "status": status,
+            "priority": priority,
             "pane": pane if isinstance(pane, int) else None,
+            "waiting_on": (waiting_on or "").strip()[:200],
+            "follow_up_at": follow_up_at if isinstance(follow_up_at, str) and follow_up_at else None,
             "created": now,
             "updated": now,
         }
@@ -81,7 +89,8 @@ def add_task(title: str, note: str = "", status: str = "parked",
 
 
 def update_task(task_id: int, **fields) -> Optional[dict]:
-    allowed = {"title", "note", "status", "pane"}
+    allowed = {"title", "note", "status", "pane", "waiting_on",
+               "follow_up_at", "priority"}
     with _lock:
         data = _load_raw()
         for t in data.get("tasks", []):
@@ -91,6 +100,8 @@ def update_task(task_id: int, **fields) -> Optional[dict]:
                         continue
                     if k == "status" and v not in VALID_STATUSES:
                         continue
+                    if k == "priority" and v not in VALID_PRIORITIES:
+                        continue
                     if k == "pane" and v is not None and not isinstance(v, int):
                         continue
                     if k == "title":
@@ -99,6 +110,10 @@ def update_task(task_id: int, **fields) -> Optional[dict]:
                             continue
                     if k == "note":
                         v = (v or "").strip()[:2000]
+                    if k == "waiting_on":
+                        v = (v or "").strip()[:200]
+                    if k == "follow_up_at":
+                        v = v if isinstance(v, str) and v else None
                     t[k] = v
                 t["updated"] = time.time()
                 _save_raw(data)
