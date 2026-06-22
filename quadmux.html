@@ -2950,6 +2950,7 @@ function applyCostSnapshot(snap) {
     const cost = p.cost || 0;
     el.textContent = `${formatTokens(tok)} tok · $${cost.toFixed(2)}`;
     el.dataset.empty = tok === 0 ? '1' : '0';
+    applyTaskTitle(p);
     if (!p.has_session) {
       el.title = `Pane ${p.shell + 1}: waiting for Claude session file`;
     } else {
@@ -3252,9 +3253,32 @@ function applyPaneMeta(p) {
       : p.role;
     if (currentText === '' || currentText === stock) {
       titleEl.textContent = newText;
+      titleEl.dataset.auto = '1';
     }
     titleEl.title = [p.role, p.cwd, p.branch].filter(Boolean).join(' | ');
   }
+}
+
+// Auto-title panes with a short description of the task being undertaken
+// (latest real user prompt from the pane's session JSONL, via cost_snapshot).
+// A manual rename (typed into the title) always wins until cleared back to
+// "Claude N"; auto-set titles keep following the conversation.
+function applyTaskTitle(p) {
+  if (!p.task) return;
+  const titleEl = document.querySelector(`.shell-title[data-shell="${p.shell}"]`);
+  if (!titleEl) return;
+  if (document.activeElement === titleEl) return; // user is editing it now
+  const stock = `Claude ${p.shell + 1}`;
+  const currentText = (titleEl.textContent || '').trim();
+  if (currentText !== '' && currentText !== stock && titleEl.dataset.auto !== '1') return;
+  if (currentText === p.task) return;
+  titleEl.textContent = p.task;
+  titleEl.dataset.auto = '1';
+  titleEl.title = `Task: ${p.task} (auto-titled; click to rename)`;
+  try {
+    localStorage.setItem(`quadmux-title-${p.shell}`, p.task);
+    localStorage.setItem(`quadmux-title-auto-${p.shell}`, '1');
+  } catch (_) {}
 }
 
 // Per-pane agent state badge (status bus)
@@ -3901,7 +3925,18 @@ document.querySelectorAll('.shell-title').forEach(el => {
   const idx = el.dataset.shell;
   const saved = localStorage.getItem(`quadmux-title-${idx}`);
   if (saved) el.textContent = saved;
-  el.addEventListener('blur', () => localStorage.setItem(`quadmux-title-${idx}`, el.textContent));
+  if (localStorage.getItem(`quadmux-title-auto-${idx}`) === '1') el.dataset.auto = '1';
+  el.addEventListener('focus', () => { el.dataset.prev = el.textContent; });
+  el.addEventListener('blur', () => {
+    localStorage.setItem(`quadmux-title-${idx}`, el.textContent);
+    if (el.dataset.prev !== undefined && el.dataset.prev !== el.textContent) {
+      // User typed a rename: pin it (clearing back to "Claude N" re-enables auto).
+      const manual = (el.textContent || '').trim() !== `Claude ${Number(idx) + 1}`
+        && (el.textContent || '').trim() !== '';
+      el.dataset.auto = manual ? '0' : '1';
+      localStorage.setItem(`quadmux-title-auto-${idx}`, el.dataset.auto);
+    }
+  });
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
   });

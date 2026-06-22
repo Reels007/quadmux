@@ -152,6 +152,41 @@ def assign_session_files(pane_cwds: List[str]) -> List[Optional[str]]:
     return out
 
 
+TASK_MAX_CHARS = 48
+
+
+def _task_from_obj(obj: dict) -> Optional[str]:
+    """Short task description from a session-JSONL user line, or None.
+
+    Takes the user's typed prompt (not tool results, harness reminders, or
+    command stdout) and truncates it to a pane-title-sized summary.
+    """
+    if obj.get("type") != "user" or obj.get("isMeta"):
+        return None
+    msg = obj.get("message")
+    if not isinstance(msg, dict) or msg.get("role") != "user":
+        return None
+    content = msg.get("content")
+    if isinstance(content, list):
+        if any(isinstance(c, dict) and c.get("type") == "tool_result" for c in content):
+            return None
+        content = " ".join(c.get("text", "") for c in content
+                           if isinstance(c, dict) and c.get("type") == "text")
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    if (not text or text.startswith("<") or text.startswith("Caveat:")
+            or "<command-name>" in text or "<task-notification>" in text):
+        return None
+    line = next((l.strip() for l in text.splitlines() if l.strip()), "")
+    line = " ".join(line.split())
+    if not line:
+        return None
+    if len(line) > TASK_MAX_CHARS:
+        line = line[:TASK_MAX_CHARS - 3].rstrip() + "..."
+    return line
+
+
 class CostTracker:
     """Tails a single session JSONL and accumulates usage + cost."""
 
@@ -162,6 +197,7 @@ class CostTracker:
         self.tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
         self.cost = 0.0
         self.last_update = 0.0
+        self.task = ""
 
     def attach(self, path: str):
         self.path = path
@@ -169,6 +205,7 @@ class CostTracker:
         self.tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
         self.cost = 0.0
         self.last_model = ""
+        self.task = ""
 
     def poll(self) -> bool:
         """Read any new bytes appended to ``self.path``. Returns True if totals changed."""
@@ -201,6 +238,10 @@ class CostTracker:
                 # Could be a half-written line at EOF; keep for next poll.
                 leftover = raw
                 continue
+            task = _task_from_obj(obj)
+            if task:
+                self.task = task
+                changed = True
             msg = obj.get("message") or {}
             usage = msg.get("usage") if isinstance(msg, dict) else None
             if not isinstance(usage, dict):
@@ -227,4 +268,5 @@ class CostTracker:
             "total_tokens": sum(self.tokens.values()),
             "cost": round(self.cost, 4),
             "model": self.last_model,
+            "task": self.task,
         }

@@ -174,3 +174,32 @@ def test_session_files_fallback_when_encoding_differs(tmp_path, monkeypatch):
     files = costs.session_files_for_cwd(cwd)
     assert len(files) == 1
     assert files[0] == str(f)
+
+
+def test_task_extracted_from_user_prompt(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text("\n".join([
+        json.dumps({"type": "user", "message": {"role": "user",
+                    "content": "build the fundraising tracker"}}),
+        json.dumps({"type": "assistant", "message": {"role": "assistant", "model": "claude-opus-4-7",
+                    "usage": {"input_tokens": 1, "output_tokens": 1}}}),
+        json.dumps({"type": "user", "message": {"role": "user",
+                    "content": [{"type": "tool_result", "content": "ignored"}]}}),
+        json.dumps({"type": "user", "message": {"role": "user",
+                    "content": "<command-name>/clear</command-name>"}}),
+    ]) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    snap = t.snapshot()
+    assert snap["task"] == "build the fundraising tracker"
+
+
+def test_task_truncated_to_title_length(tmp_path):
+    long_prompt = "x" * 100
+    f = tmp_path / "s.jsonl"
+    f.write_text(json.dumps({"type": "user",
+                             "message": {"role": "user", "content": long_prompt}}) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    assert len(t.task) <= costs.TASK_MAX_CHARS
+    assert t.task.endswith("...")

@@ -518,7 +518,8 @@ def _cost_snapshot_payload():
     for i, t in enumerate(cost_trackers):
         snap = t.snapshot() if t else {"tokens": {"input": 0, "output": 0,
                                                    "cache_read": 0, "cache_write": 0},
-                                       "total_tokens": 0, "cost": 0.0, "model": ""}
+                                       "total_tokens": 0, "cost": 0.0, "model": "",
+                                       "task": ""}
         panes.append({"shell": i, **snap,
                       "has_session": bool(t and t.path)})
         total_tokens += snap["total_tokens"]
