@@ -2345,6 +2345,9 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
+<!-- WebGL renderer: each terminal draws to its own canvas, so text selection
+     stays inside one pane (the DOM renderer let a drag select across panes). -->
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js"></script>
 <script>
 const WS_URL = `ws://${location.host}`;
 const colors = { 0: '#4ade80', 1: '#60a5fa', 2: '#facc15', 3: '#c084fc' };
@@ -2418,6 +2421,20 @@ for (let i = 0; i < 4; i++) {
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
   term.open(document.getElementById(`term-${i}`));
+
+  // WebGL renderer keeps each pane's selection self-contained (no cross-pane
+  // copy garble) and is faster. Fall back to the default DOM renderer if WebGL
+  // is unavailable or its context is lost (e.g. GPU reset, too many contexts).
+  try {
+    if (typeof WebglAddon !== 'undefined' && WebglAddon.WebglAddon) {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => { try { webgl.dispose(); } catch (_) {} });
+      term.loadAddon(webgl);
+    }
+  } catch (e) {
+    console.warn(`WebGL renderer unavailable for pane ${i}, using DOM renderer:`, e);
+  }
+
   fitAddon.fit();
   terms.push(term);
   fitAddons.push(fitAddon);

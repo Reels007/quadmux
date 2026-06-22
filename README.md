@@ -43,6 +43,20 @@ python3 quadmux-server.py
 
 The server spawns 4 Claude Code instances and serves the web UI on the same port.
 
+## Deploy
+
+The running install serves from `~/Library/Application Support/ClaudeX4/`, not this
+repo. Edits here do nothing until synced. After changing `quadmux.html` or any `*.py`
+module, run:
+
+```bash
+./deploy.sh            # sync runtime files + verify no drift
+./deploy.sh --restart  # also restart the server (needed for *.py changes)
+```
+
+`quadmux.html` is re-read on every request, so HTML-only changes just need a tab
+hard-refresh; `*.py` changes need `--restart`.
+
 ## Usage
 
 ### Input Bar (bottom of screen)
