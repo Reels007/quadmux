@@ -9,3 +9,4 @@ __pycache__/
 .gstack/
 .venv/
 .pytest_cache/
+.playwright-mcp/

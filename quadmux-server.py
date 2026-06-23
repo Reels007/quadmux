@@ -371,6 +371,63 @@ def spawn_claude(claude_path, idx, rows=24, cols=80, cwd=None, extra_args=None):
         return pid, master_fd
 
 
+# --- Startup connectivity preflight + failover ---------------------------
+# Recent "connection problems" are transient TLS resets (curl code 000 /
+# "Premature close") rather than endpoint outages: the hosts answer fine on
+# retry. The worst hit is at launch, when N panes all reach the OAuth token
+# endpoint within a couple of seconds and one reset throws "API error 401".
+# This preflight probes the endpoints with backoff BEFORE spawning, so a
+# blip is ridden out instead of poisoning a whole pane.
+
+PREFLIGHT_HOSTS = ("api.anthropic.com", "console.anthropic.com")
+
+
+def _probe_host(host, port=443, timeout=6):
+    """TCP+TLS connect probe. Returns (ok: bool, detail: str). Tests exactly
+    the failure mode we see (reset mid-handshake) without needing auth."""
+    import ssl
+    try:
+        addr = socket.gethostbyname(host)
+    except OSError as e:
+        return False, f"DNS fail ({e})"
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((addr, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host):
+                return True, "ok"
+    except Exception as e:  # noqa: BLE001 - report any connect/TLS failure
+        return False, f"{type(e).__name__}: {e}"
+
+
+def preflight_connectivity(retries=3, backoff=2.0):
+    """Probe Anthropic endpoints before spawning. Retries on transient resets.
+    Returns {ok, hosts: {host: (ok, detail)}, attempts}."""
+    last = {}
+    for attempt in range(1, retries + 1):
+        last = {h: _probe_host(h) for h in PREFLIGHT_HOSTS}
+        if all(ok for ok, _ in last.values()):
+            return {"ok": True, "hosts": last, "attempts": attempt}
+        if attempt < retries:
+            time.sleep(backoff * attempt)
+    return {"ok": False, "hosts": last, "attempts": retries}
+
+
+def find_fallback_cli(name):
+    """Locate a fallback CLI (e.g. 'gemini') for failover. Returns path or None."""
+    if not name:
+        return None
+    p = shutil.which(name)
+    if p and os.access(p, os.X_OK):
+        return p
+    home = os.path.expanduser("~")
+    for c in (os.path.join(home, ".local", "bin", name),
+              os.path.join(home, ".claude", "bin", name),
+              f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}"):
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
 def pty_reader_thread(master_fd, idx):
     """Thread that reads from PTY master and schedules broadcast."""
     print(f"  Reader {idx} started (fd={master_fd})", flush=True)
@@ -1009,6 +1066,11 @@ def main():
                         help="Path to a git repo. With --preset, each pane gets a worktree off this repo.")
     parser.add_argument("--no-worktrees", action="store_true",
                         help="With --preset, skip git worktrees and run all panes in --repo (or cwd).")
+    parser.add_argument("--no-preflight", action="store_true",
+                        help="Skip the startup connectivity check (probes Anthropic endpoints with retry/backoff).")
+    parser.add_argument("--fallback", type=str, default="gemini",
+                        help="CLI to fail over to if Anthropic is unreachable at startup (default: gemini). "
+                             "Set to '' to disable failover. Requires that CLI installed + authed.")
     args = parser.parse_args()
 
     # Resolve preset + worktrees first so NUM_SHELLS matches the preset size.
@@ -1090,6 +1152,30 @@ def main():
     claude_path = find_claude()
     print(f"Using: {claude_path}", flush=True)
 
+    # 1b. Connectivity preflight (rides out the transient TLS resets that
+    # otherwise poison panes at launch). On hard failure after retries,
+    # optionally fail over to --fallback (e.g. gemini) if it's installed.
+    spawn_path = claude_path
+    using_fallback = False
+    if not args.no_preflight:
+        pf = preflight_connectivity()
+        if pf["ok"]:
+            print(f"Preflight: Anthropic reachable (attempt {pf['attempts']}/3).", flush=True)
+        else:
+            print("Preflight: Anthropic endpoints DEGRADED after 3 attempts -", flush=True)
+            for h, (ok, detail) in pf["hosts"].items():
+                print(f"    [{'OK' if ok else 'XX'}] {h}: {detail}", flush=True)
+            fb = find_fallback_cli(args.fallback) if args.fallback else None
+            if fb:
+                print(f"Preflight: failing over to '{args.fallback}' -> {fb}", flush=True)
+                spawn_path = fb
+                using_fallback = True
+            elif args.fallback:
+                print(f"Preflight: fallback '{args.fallback}' not installed; "
+                      "starting Claude anyway (panes may show connection errors).", flush=True)
+            else:
+                print("Preflight: failover disabled; starting Claude anyway.", flush=True)
+
     # 2. Clear stale server on same port
     if not port_is_free(args.port):
         print(f"Port {args.port} in use - killing stale server...", flush=True)
@@ -1108,14 +1194,20 @@ def main():
         meta = pane_meta[i] if i < len(pane_meta) else {}
         cwd = meta.get("cwd") or None
         sys_prompt = meta.get("system_prompt") or ""
-        extra_args = ["--append-system-prompt", sys_prompt] if sys_prompt else []
-        # Fixed session id so the cost tracker can find this pane's JSONL
-        # deterministically (panes sharing a cwd are otherwise ambiguous).
-        sid = str(uuid.uuid4())
-        meta["session_id"] = sid
-        extra_args += ["--session-id", sid]
+        if using_fallback:
+            # Fallback CLIs (e.g. gemini) don't accept Claude's --session-id /
+            # --append-system-prompt flags, so run them bare. Cost tracking is
+            # Claude-only and is skipped for these degraded-mode panes.
+            extra_args = []
+        else:
+            extra_args = ["--append-system-prompt", sys_prompt] if sys_prompt else []
+            # Fixed session id so the cost tracker can find this pane's JSONL
+            # deterministically (panes sharing a cwd are otherwise ambiguous).
+            sid = str(uuid.uuid4())
+            meta["session_id"] = sid
+            extra_args += ["--session-id", sid]
         try:
-            pid, master_fd = spawn_claude(claude_path, i, cwd=cwd, extra_args=extra_args)
+            pid, master_fd = spawn_claude(spawn_path, i, cwd=cwd, extra_args=extra_args)
         except RuntimeError as e:
             print(f"Error: {e}", flush=True)
             for prev_pid in child_pids:
