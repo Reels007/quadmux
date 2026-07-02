@@ -1082,6 +1082,49 @@ body {
     line-height: 1;
   }
   .btn-park:hover { background: #f1f5f9; }
+  .shell-model {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #475569;
+    border-radius: 4px;
+    padding: 1px 3px;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    max-width: 70px;
+    outline: none;
+  }
+  .shell-model:hover { background: #f1f5f9; }
+  .shell-model[data-pending="1"] { border-color: var(--accent); color: var(--accent); }
+  body:not(.theme-light) .shell-model {
+    background: rgba(255,255,255,0.04);
+    border-color: var(--border-subtle, #334155);
+    color: var(--jarvis-ink-dim, #94a3b8);
+  }
+  body:not(.theme-light) .shell-model option { background: #0f172a; color: #e2e8f0; }
+  .btn-fast {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #94a3b8;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    outline: none;
+    transition: color .12s, border-color .12s, background .12s;
+  }
+  .btn-fast:hover { background: #f1f5f9; }
+  .btn-fast[aria-pressed="true"] {
+    color: #22c55e;
+    border-color: #22c55e;
+    background: rgba(34,197,94,0.12);
+  }
+  body:not(.theme-light) .btn-fast {
+    background: rgba(255,255,255,0.04);
+    border-color: var(--border-subtle, #334155);
+  }
+  body:not(.theme-light) .btn-fast:hover { background: rgba(255,255,255,0.08); }
   .handoff-pop {
     position: absolute;
     z-index: 900;
@@ -2166,6 +2209,15 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-0"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <select class="shell-model" data-shell="0" data-pending="0" title="Model for this pane (live /model switch)">
+          <option value="" disabled selected>model</option>
+          <option value="opus">Opus 4.8</option>
+          <option value="sonnet">Sonnet 4.6</option>
+          <option value="haiku">Haiku 4.5</option>
+          <option value="fable">Fable 5</option>
+          <option value="opusplan">Opus plan</option>
+        </select>
+        <button class="btn-fast" data-shell="0" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
         <span class="shell-cost" id="cost-0" data-empty="1" title="Pane 1 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
@@ -2192,6 +2244,15 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-1"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <select class="shell-model" data-shell="1" data-pending="0" title="Model for this pane (live /model switch)">
+          <option value="" disabled selected>model</option>
+          <option value="opus">Opus 4.8</option>
+          <option value="sonnet">Sonnet 4.6</option>
+          <option value="haiku">Haiku 4.5</option>
+          <option value="fable">Fable 5</option>
+          <option value="opusplan">Opus plan</option>
+        </select>
+        <button class="btn-fast" data-shell="1" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
         <span class="shell-cost" id="cost-1" data-empty="1" title="Pane 2 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
@@ -2218,6 +2279,15 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-2"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <select class="shell-model" data-shell="2" data-pending="0" title="Model for this pane (live /model switch)">
+          <option value="" disabled selected>model</option>
+          <option value="opus">Opus 4.8</option>
+          <option value="sonnet">Sonnet 4.6</option>
+          <option value="haiku">Haiku 4.5</option>
+          <option value="fable">Fable 5</option>
+          <option value="opusplan">Opus plan</option>
+        </select>
+        <button class="btn-fast" data-shell="2" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
         <span class="shell-cost" id="cost-2" data-empty="1" title="Pane 3 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
@@ -2242,6 +2312,15 @@ body {
       <div class="shell-status">
         <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-3"></span></span></button>
         <span class="shell-focus-dot"></span>
+        <select class="shell-model" data-shell="3" data-pending="0" title="Model for this pane (live /model switch)">
+          <option value="" disabled selected>model</option>
+          <option value="opus">Opus 4.8</option>
+          <option value="sonnet">Sonnet 4.6</option>
+          <option value="haiku">Haiku 4.5</option>
+          <option value="fable">Fable 5</option>
+          <option value="opusplan">Opus plan</option>
+        </select>
+        <button class="btn-fast" data-shell="3" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
         <span class="shell-cost" id="cost-3" data-empty="1" title="Pane 4 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
@@ -2345,6 +2424,7 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js" integrity="sha384-J4qzUjBl1FxyLsl/kQPQIOeINsmp17OHYXDOMpMxlKX53ZfYsL+aWHpgArvOuof9" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js" integrity="sha384-XGqKrV8Jrukp1NITJbOEHwg01tNkuXr6uB6YEj69ebpYU3v7FvoGgEg23C1Gcehk" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js" integrity="sha384-rZV6rh0SoMasxn3Q4xrTEgBKArJ47qXr2bxeT0S4mf6sqQCkvv99FnFKawCQUqUR" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js" integrity="sha384-Zb/L38m4THfRbsxxv8gWAi8cQ6xcWQnv0BgR0qwbTDwtBDaPi6pkyfgfBIH6C8ZG" crossorigin="anonymous"></script>
 <!-- WebGL renderer: each terminal draws to its own canvas, so text selection
      stays inside one pane (the DOM renderer let a drag select across panes). -->
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js" integrity="sha384-suTk5GfzCaPxAJRzhqzQQvM81UskMll+stLgqXpay997ORTnMRm1IAJi143VfhXU" crossorigin="anonymous"></script>
@@ -2420,6 +2500,13 @@ for (let i = 0; i < 4; i++) {
   });
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
+  // Make URLs in terminal output clickable (opens in a new tab). Ctrl/Cmd+click
+  // by default; we drop the modifier so a plain click follows the link.
+  if (typeof WebLinksAddon !== 'undefined' && WebLinksAddon.WebLinksAddon) {
+    term.loadAddon(new WebLinksAddon.WebLinksAddon(
+      (event, uri) => { window.open(uri, '_blank', 'noopener,noreferrer'); }
+    ));
+  }
   term.open(document.getElementById(`term-${i}`));
 
   // WebGL renderer keeps each pane's selection self-contained (no cross-pane
@@ -2951,6 +3038,7 @@ function applyCostSnapshot(snap) {
     el.textContent = `${formatTokens(tok)} tok · $${cost.toFixed(2)}`;
     el.dataset.empty = tok === 0 ? '1' : '0';
     applyTaskTitle(p);
+    syncPaneModelSelect(p.shell, p.model);
     if (!p.has_session) {
       el.title = `Pane ${p.shell + 1}: waiting for Claude session file`;
     } else {
@@ -3241,6 +3329,11 @@ function flashPane(idx) {
 }
 
 function applyPaneMeta(p) {
+  // Hydrate the per-pane model dropdown from the persisted choice on connect.
+  if (p.model) {
+    const modelSel = document.querySelector(`.shell-model[data-shell="${p.shell}"]`);
+    if (modelSel && modelSel.dataset.pending !== '1') modelSel.value = p.model;
+  }
   const titleEl = document.querySelector(`.shell-title[data-shell="${p.shell}"]`);
   if (!titleEl) return;
   // Only override if the title is the stock "Claude N" placeholder.
@@ -3801,6 +3894,68 @@ document.querySelectorAll('.btn-park').forEach(btn => {
     if (input) { input.focus(); input.select(); }
   });
 });
+
+// --- Per-pane model switcher: sends `/model <alias>` live into that pane ---
+const MODEL_LABELS = { opus: 'Opus 4.8', sonnet: 'Sonnet 4.6', haiku: 'Haiku 4.5', fable: 'Fable 5', opusplan: 'Opus plan' };
+document.querySelectorAll('.shell-model').forEach(sel => {
+  sel.addEventListener('change', () => {
+    const idx = parseInt(sel.dataset.shell, 10);
+    const alias = sel.value;
+    if (!alias) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // Server persists the choice (re-applied as --model on restart) and
+      // applies it live to the running pane via /model.
+      ws.send(JSON.stringify({ type: 'set_model', shell: idx, model: alias }));
+    }
+    sel.dataset.pending = '1';
+    sel.title = `Switching pane ${idx + 1} to ${MODEL_LABELS[alias] || alias}…`;
+  });
+});
+
+// --- Per-pane fast-mode toggle: sends `/fast` live into that pane ---
+// /fast is a session-level toggle (no CLI flag, no persistence), so the button
+// just mirrors clicks. A fresh pane always starts with fast OFF.
+document.querySelectorAll('.btn-fast').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const idx = parseInt(btn.dataset.shell, 10);
+    if (!(ws && ws.readyState === WebSocket.OPEN)) return;
+    ws.send(JSON.stringify({ type: 'set_fast', shell: idx }));
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = `Fast mode ${on ? 'ON' : 'OFF'} for pane ${idx + 1} (toggles /fast)`;
+  });
+});
+
+function modelAliasFromId(id) {
+  if (!id) return '';
+  const s = String(id).toLowerCase();
+  if (s.includes('fable')) return 'fable';
+  if (s.includes('haiku')) return 'haiku';
+  if (s.includes('sonnet')) return 'sonnet';
+  if (s.includes('opus')) return 'opus';
+  return '';
+}
+
+// Reflect the model Claude is actually running (from cost_snapshot JSONL),
+// without clobbering a selection the user just made but Claude hasn't applied yet.
+function syncPaneModelSelect(shellIdx, modelId) {
+  const sel = document.querySelector(`.shell-model[data-shell="${shellIdx}"]`);
+  if (!sel) return;
+  const alias = modelAliasFromId(modelId);
+  if (!alias) return;
+  if (sel.dataset.pending === '1') {
+    // opusplan reports as opus at the message level - treat as confirmed.
+    const pendingBase = sel.value === 'opusplan' ? 'opus' : sel.value;
+    if (pendingBase === alias) {
+      sel.dataset.pending = '0';
+      sel.title = 'Model for this pane (live /model switch)';
+    }
+    return;
+  }
+  // opusplan reports as opus at the message level - don't downgrade the label.
+  if (sel.value === 'opusplan' && alias === 'opus') return;
+  if (sel.value !== alias) sel.value = alias;
+}
 
 function respondToPermission(req, action) {
   if (action === 'focus') {
