@@ -52,7 +52,7 @@ except ImportError:
 
 import re
 
-from status_bus import StatusBus
+from status_bus import StatusBus, is_dialog_answer_key
 from policy import PolicyEngine
 import presets as presets_mod
 import worktree as worktree_mod
@@ -682,7 +682,11 @@ async def _policy_auto_approve(idx, req, band, rule):
         print(f"  Policy: auto-approve write failed shell {idx}: {e}", flush=True)
         await _broadcast_permission_request(req)  # fall back to asking
         return
-    bus.close_permission(idx, reason=f"auto_{band}")
+    # resolve_dialog (not close_permission): also leaves awaiting_permission,
+    # so the NEXT dialog re-triggers a transition and gets auto-approved too.
+    _, new_state = bus.resolve_dialog(idx, reason=f"auto_{band}")
+    if new_state:
+        await _broadcast_state(idx, new_state)
     evt = {"type": "permission_auto", "id": req["id"], "shell": idx,
            "band": band, "rule": rule,
            "question": req.get("question", ""), "ts": time.time()}
@@ -900,6 +904,19 @@ async def handler(ws):
                         os.write(masters[idx], payload.encode())
                     except (OSError, IndexError) as e:
                         print(f"  Write error shell {idx}: {e}", flush=True)
+                        continue
+                    # Typing an answer key at an open dialog resolves it at
+                    # the pane; close the request and re-arm detection so the
+                    # next dialog opens a fresh one. Composed sends (non-raw)
+                    # end in \r, which also answers a modal dialog.
+                    if (bus is not None
+                            and bus.states[idx] == "awaiting_permission"
+                            and (not raw or is_dialog_answer_key(text))):
+                        closed, new_state = bus.resolve_dialog(idx, reason="pane_input")
+                        if closed:
+                            await _broadcast_permission_resolved(closed["id"], idx, "pane_input")
+                        if new_state:
+                            await _broadcast_state(idx, new_state)
             elif msg_type == "set_model":
                 # Persist the pane's model choice AND apply it live via /model.
                 idx = data.get("shell")
@@ -1060,7 +1077,15 @@ async def handler(ws):
                     continue
                 if answer not in ("allow", "deny"):
                     continue
-                key = "y" if answer == "allow" else "n"
+                # Numbered menus ignore y/n: "1" selects Yes, Esc cancels.
+                # y/n only for legacy [y/n] prompts (same rule as auto-approve).
+                pending = bus.permissions[idx] if bus is not None else None
+                legacy = re.search(r'\[y/n\]|\(y/n\)',
+                                   (pending or {}).get("question", ""), re.IGNORECASE)
+                if answer == "allow":
+                    key = "y" if legacy else "1"
+                else:
+                    key = "n" if legacy else "\x1b"
                 try:
                     os.write(masters[idx], key.encode())
                     print(f"  Perm: shell {idx} req {req_id} -> {answer}", flush=True)
@@ -1068,9 +1093,11 @@ async def handler(ws):
                     print(f"  Perm write error shell {idx}: {e}", flush=True)
                     continue
                 if bus is not None:
-                    closed = bus.close_permission(idx, reason=answer)
+                    closed, new_state = bus.resolve_dialog(idx, reason=answer)
                     if closed:
                         await _broadcast_permission_resolved(closed["id"], idx, answer)
+                    if new_state:
+                        await _broadcast_state(idx, new_state)
             elif msg_type == "voice_start":
                 voice_shell = data.get("shell", -1)
                 print(f"  Voice active on pane {voice_shell + 1}", flush=True)

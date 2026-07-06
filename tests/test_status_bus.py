@@ -204,3 +204,51 @@ def test_quoted_yn_mid_sentence_is_not_permission():
 def test_yn_at_line_end_is_permission():
     assert detect_state("Overwrite existing file? [y/n]: ", "tool_running") == "awaiting_permission"
     assert detect_state("Continue? (y/n)\n", "idle") == "awaiting_permission"
+
+
+# --- Dialog resolution re-arms detection (5 Jul 2026 late) ---
+# Bug: state stuck in awaiting_permission after the first dialog (nothing in
+# the output stream reliably transitions out), so every SUBSEQUENT dialog was
+# invisible to the policy layer - only one auto-approve per pane per restart.
+
+def test_resolve_dialog_closes_request_and_rearms():
+    bus = StatusBus(1)
+    assert bus.update(0, NUMBERED_DIALOG) == "awaiting_permission"
+    req = bus.open_permission(0, "Do you want to proceed?")
+    closed, new_state = bus.resolve_dialog(0, reason="auto_amber")
+    assert closed["id"] == req["id"]
+    assert new_state == "unknown"
+    assert bus.states[0] == "unknown"
+    assert bus.permissions[0] is None
+    # The critical regression: a SECOND dialog must trigger a fresh transition.
+    assert bus.update(0, NUMBERED_DIALOG) == "awaiting_permission"
+
+def test_resolve_dialog_with_no_open_request_still_resets_state():
+    bus = StatusBus(1)
+    bus.update(0, NUMBERED_DIALOG)
+    closed, new_state = bus.resolve_dialog(0, reason="pane_input")
+    assert closed is None
+    assert new_state == "unknown"
+
+def test_resolve_dialog_leaves_other_states_alone():
+    bus = StatusBus(1)
+    bus.update(0, "⠋ Working...")
+    closed, new_state = bus.resolve_dialog(0, reason="pane_input")
+    assert closed is None
+    assert new_state is None
+    assert bus.states[0] == "thinking"
+
+
+# --- is_dialog_answer_key: which pane keystrokes resolve a dialog ---
+
+def test_dialog_answer_keys():
+    from status_bus import is_dialog_answer_key
+    for k in ("1", "2", "3", "9", "y", "Y", "n", "N", "\r", "\n", "\x1b"):
+        assert is_dialog_answer_key(k), repr(k)
+
+def test_non_answer_keys():
+    from status_bus import is_dialog_answer_key
+    # Arrow/page-key CSI sequences start with ESC but do not answer a dialog;
+    # neither do ordinary letters (scroll, accidental typing).
+    for k in ("\x1b[A", "\x1b[B", "\x1b[5~", "a", "q", " ", ""):
+        assert not is_dialog_answer_key(k), repr(k)

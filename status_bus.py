@@ -42,6 +42,17 @@ PROMPT_TAIL_RE = re.compile(r'[❯>]\s*$')
 
 IDLE_AFTER_SECONDS = 2.0  # decay to idle after this much quiet time with a visible prompt
 
+# Keystrokes that resolve a Claude Code permission dialog when typed at the
+# pane: option digits, y/n (legacy prompts), Enter (accept highlighted), Esc
+# (cancel). A bare ESC counts; CSI sequences (arrows, page keys) do not.
+_ANSWER_CHARS = set("123456789yYnN")
+
+
+def is_dialog_answer_key(data: str) -> bool:
+    if data in ("\r", "\n", "\x1b"):
+        return True
+    return len(data) == 1 and data in _ANSWER_CHARS
+
 
 def extract_permission_question(text: str) -> str:
     """Pull the question line from a Claude Code permission prompt block.
@@ -159,6 +170,31 @@ class StatusBus:
         self._log({"type": "permission_resolved", "id": req["id"],
                    "shell": shell_idx, "reason": reason, "ts": time.time()})
         return req
+
+    def resolve_dialog(self, shell_idx: int, reason: str = "resolved"):
+        """A permission dialog was answered (auto-approve, tray, or a key
+        typed at the pane). Close any open request AND leave
+        awaiting_permission, so the next dialog produces a fresh transition.
+
+        The output stream cannot be relied on to exit awaiting_permission
+        (nothing Claude Code prints after a dialog is guaranteed to match an
+        activity pattern), and without an exit only the FIRST dialog per pane
+        ever opened a request - every later one sat unanswered.
+
+        Returns (closed_request_or_None, new_state_or_None).
+        """
+        closed = self.close_permission(shell_idx, reason=reason)
+        new_state = None
+        if (0 <= shell_idx < self.num_shells
+                and self.states[shell_idx] == "awaiting_permission"):
+            now = time.time()
+            self.states[shell_idx] = "unknown"
+            self.last_activity[shell_idx] = now
+            self._log({"type": "state", "shell": shell_idx,
+                       "from": "awaiting_permission", "to": "unknown",
+                       "ts": now, "reason": reason})
+            new_state = "unknown"
+        return closed, new_state
 
     def open_permissions(self) -> list:
         return [p for p in self.permissions if p is not None]

@@ -207,3 +207,31 @@ def test_auto_approve_sends_y_for_legacy_yn_prompt(qm_module, monkeypatch, tmp_p
     key = _auto_approve_key(qm_module, monkeypatch, tmp_path,
                             "Overwrite existing file? (y/n)")
     assert key == b"y"
+
+
+def test_auto_approve_rearms_state_for_next_dialog(qm_module, monkeypatch, tmp_path):
+    # After a successful auto-approve the pane must leave awaiting_permission,
+    # otherwise the next dialog never produces a transition and sits unanswered
+    # (the "one auto-approve per pane per restart" bug, 5 Jul 2026).
+    import asyncio
+    import status_bus as sb
+
+    monkeypatch.setattr(sb, "BUS_LOG", str(tmp_path / "bus.jsonl"))
+    bus = sb.StatusBus(1)
+    bus.states[0] = "awaiting_permission"
+    req = bus.open_permission(0, "Do you want to proceed?")
+    req["band"] = "amber"
+    r, w = os.pipe()
+    try:
+        monkeypatch.setattr(qm_module, "bus", bus)
+        monkeypatch.setattr(qm_module, "masters", [w])
+        monkeypatch.setattr(qm_module, "clients", set())
+        asyncio.run(qm_module._policy_auto_approve(0, req, "amber", "default"))
+        assert os.read(r, 8) == b"1"
+    finally:
+        os.close(r)
+        os.close(w)
+    assert bus.states[0] != "awaiting_permission"
+    assert bus.permissions[0] is None
+    # Next dialog re-triggers a transition and a fresh request.
+    assert bus.update(0, "Do you want to proceed?\n❯ 1. Yes\n  2. No\n") == "awaiting_permission"
