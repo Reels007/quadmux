@@ -252,3 +252,59 @@ def test_non_answer_keys():
     # neither do ordinary letters (scroll, accidental typing).
     for k in ("\x1b[A", "\x1b[B", "\x1b[5~", "a", "q", " ", ""):
         assert not is_dialog_answer_key(k), repr(k)
+
+
+# --- Rolling tail buffer: dialogs split across PTY chunks (6 Jul 2026) ---
+# Bug: detect_state scanned only the last 400 chars of each SINGLE chunk, so a
+# dialog whose "1. Yes" row landed in an earlier chunk (big heredoc command
+# previews split mid-render) or more than 400 chars from the chunk end (wide
+# panes: option rows + border + hint line after the row) was never detected -
+# no auto-approve, no tray entry, the dialog just sat there.
+
+HEREDOC_DIALOG = (
+    "╭─ Bash command ──────────────────────────────╮\n"
+    "│ python3 - <<'EOF'                           │\n"
+    + "".join(f"│ data.append(process(row_{i}, key_{i}))          │\n" for i in range(12))
+    + "│ EOF                                         │\n"
+    "╰─────────────────────────────────────────────╯\n"
+    "Do you want to proceed?\n"
+    "❯ 1. Yes\n"
+    "  2. Yes, and don't ask again for python3 commands in /Users/sean\n"
+    "  3. No, and tell Claude what to do differently (esc)\n"
+)
+
+def test_dialog_split_across_chunks_is_detected():
+    bus = StatusBus(1)
+    cut = HEREDOC_DIALOG.index("❯ 1. Y") + len("❯ 1. Y")
+    assert bus.update(0, HEREDOC_DIALOG[:cut]) != "awaiting_permission"
+    assert bus.update(0, HEREDOC_DIALOG[cut:]) == "awaiting_permission"
+
+def test_dialog_row_far_from_chunk_end_is_detected():
+    # Wide pane: >400 chars of option rows / padding after the "❯ 1. Yes" row.
+    pad = " " * 150
+    text = (
+        "Do you want to proceed?\n"
+        "❯ 1. Yes" + pad + "\n"
+        "  2. Yes, and don't ask again for this command" + pad + "\n"
+        "  3. No, and tell Claude what to do differently (esc)" + pad + "\n"
+    )
+    assert len(text) - (text.index("❯ 1. Yes") + 8) > 400
+    assert detect_state(text, "tool_running") == "awaiting_permission"
+
+def test_answered_dialog_text_does_not_reopen_phantom():
+    # After resolve_dialog the buffered dialog text must be dropped: the next
+    # ordinary output chunk must not re-match "❯ 1. Yes" from the answered
+    # dialog and open a phantom request (which would auto-type a stray "1").
+    bus = StatusBus(1)
+    assert bus.update(0, HEREDOC_DIALOG) == "awaiting_permission"
+    bus.open_permission(0, "Do you want to proceed?")
+    bus.resolve_dialog(0, reason="auto_amber")
+    assert bus.update(0, "⏺ Bash(python3 - <<'EOF'...)\n  ⎿ ok\n") != "awaiting_permission"
+    assert bus.states[0] != "awaiting_permission"
+
+def test_state_change_close_also_drops_buffer():
+    bus = StatusBus(1)
+    assert bus.update(0, HEREDOC_DIALOG) == "awaiting_permission"
+    bus.open_permission(0, "Do you want to proceed?")
+    bus.close_permission(0, reason="state_change")
+    assert bus.update(0, "some ordinary output\n") != "awaiting_permission"

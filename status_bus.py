@@ -42,6 +42,8 @@ PROMPT_TAIL_RE = re.compile(r'[❯>]\s*$')
 
 IDLE_AFTER_SECONDS = 2.0  # decay to idle after this much quiet time with a visible prompt
 
+TAIL_BUFFER_BYTES = 8192  # raw PTY output retained per shell across chunks
+
 # Keystrokes that resolve a Claude Code permission dialog when typed at the
 # pane: option digits, y/n (legacy prompts), Enter (accept highlighted), Esc
 # (cancel). A bare ESC counts; CSI sequences (arrows, page keys) do not.
@@ -109,13 +111,18 @@ def _clean(text: str) -> str:
 def detect_state(text: str, prior_state: str) -> str | None:
     """Return new state if a transition is detected, else None.
 
-    Operates on a single chunk of PTY output. The caller should also call
+    `StatusBus.update` passes a rolling per-shell buffer, not a single chunk:
+    dialogs render across multiple PTY reads and the "❯ 1. Yes" row can be
+    split mid-pattern at a chunk boundary. The caller should also call
     `tick()` periodically to decay to idle.
     """
     clean = _clean(text)
     tail = clean[-400:]
 
-    if PERMISSION_RE.search(tail):
+    # Permission dialogs are tall: the option rows, bottom border and hint
+    # line rendered AFTER the "❯ 1. Yes" row can exceed 400 chars on wide
+    # panes, so permissions get a wider window than the activity signals.
+    if PERMISSION_RE.search(clean[-1200:]):
         return "awaiting_permission"
     if ERROR_RE.search(tail):
         return "errored"
@@ -141,6 +148,9 @@ class StatusBus:
         self.last_activity = [0.0] * num_shells
         self.last_prompt_seen = [0.0] * num_shells
         self.permissions = [None] * num_shells  # current open request per shell: dict or None
+        # Rolling raw-output tail per shell so detection sees across chunk
+        # boundaries (also lets ANSI sequences split mid-escape re-join).
+        self._tails = [""] * num_shells
         self._next_request_id = 1
         self.subscribers = []  # list of async callables: (event_dict) -> coroutine
         os.makedirs(os.path.dirname(BUS_LOG), exist_ok=True)
@@ -167,6 +177,9 @@ class StatusBus:
         if req is None:
             return None
         self.permissions[shell_idx] = None
+        # Drop buffered output: the closed dialog's "❯ 1. Yes" text must not
+        # re-match on the next chunk and open a phantom request.
+        self._tails[shell_idx] = ""
         self._log({"type": "permission_resolved", "id": req["id"],
                    "shell": shell_idx, "reason": reason, "ts": time.time()})
         return req
@@ -185,6 +198,10 @@ class StatusBus:
         """
         closed = self.close_permission(shell_idx, reason=reason)
         new_state = None
+        if 0 <= shell_idx < self.num_shells:
+            # Clear even when no request was open (answer keys typed at a
+            # pane whose dialog was never detected still land here).
+            self._tails[shell_idx] = ""
         if (0 <= shell_idx < self.num_shells
                 and self.states[shell_idx] == "awaiting_permission"):
             now = time.time()
@@ -213,7 +230,9 @@ class StatusBus:
         if not (0 <= shell_idx < self.num_shells):
             return None
         prior = self.states[shell_idx]
-        new_state = detect_state(text, prior)
+        buf = (self._tails[shell_idx] + text)[-TAIL_BUFFER_BYTES:]
+        self._tails[shell_idx] = buf
+        new_state = detect_state(buf, prior)
         now = time.time()
 
         clean_tail = _clean(text)[-200:].rstrip()
@@ -256,6 +275,7 @@ class StatusBus:
         if not (0 <= shell_idx < self.num_shells):
             return
         prior = self.states[shell_idx]
+        self._tails[shell_idx] = ""  # respawned pane must not inherit old output
         if prior == "errored":
             return
         now = time.time()
