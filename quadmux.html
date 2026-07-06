@@ -70,7 +70,7 @@ body {
     display: grid;
     grid-template-columns: 1fr 4px 1fr;
     grid-template-rows: 1fr 4px 1fr;
-    padding: 6px;
+    padding: 42px 6px 6px;  /* top clearance for the fixed top-left rail */
     gap: 0;
     min-height: 0;
     transition: grid-template-columns var(--transition-slow), grid-template-rows var(--transition-slow);
@@ -103,6 +103,7 @@ body {
   }
 
   .shell {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     border-radius: var(--radius-md);
@@ -823,6 +824,7 @@ body {
   }
   .activity-row[data-type="state"]               { border-left-color: #64748b; }
   .activity-row[data-type^="permission"]         { border-left-color: #dc2626; }
+  .activity-row[data-type="permission_auto"]     { border-left-color: #10b981; }
   .activity-row[data-type="handoff"]             { border-left-color: #38bdf8; }
   .activity-row .ts {
     color: #64748b;
@@ -1165,6 +1167,215 @@ body {
   }
   .handoff-pop-actions .ok     { background: #2563eb; color: #fff; }
   .handoff-pop-actions .cancel { background: #e2e8f0; color: #334155; }
+
+  /* Slim headers: essentials always visible (number, title, project chip,
+     cost, state, health). Secondary controls appear on hover / keyboard focus;
+     all of them are also one Cmd+K away. Active states pin themselves visible:
+     live voice, fast-on, running timer. */
+  .shell-header .btn-voice:not(.voice-active),
+  .shell-header .shell-model,
+  .shell-header .btn-fast[aria-pressed="false"],
+  .shell-header .shell-timer:not(.running),
+  .shell-header .btn-handoff,
+  .shell-header .btn-park {
+    display: none;
+  }
+  .shell-header:hover .btn-voice,
+  .shell-header:focus-within .btn-voice,
+  .shell-header:hover .btn-fast,
+  .shell-header:focus-within .btn-fast,
+  .shell-header:hover .btn-handoff,
+  .shell-header:focus-within .btn-handoff,
+  .shell-header:hover .btn-park,
+  .shell-header:focus-within .btn-park {
+    display: inline-flex;
+  }
+  .shell-header:hover .shell-model,
+  .shell-header:focus-within .shell-model {
+    display: inline-block;
+  }
+  .shell-header:hover .shell-timer,
+  .shell-header:focus-within .shell-timer {
+    display: inline;
+  }
+
+  /* Responsive pane headers: shed non-essential controls as panes narrow.
+     Essentials always keep: number, title, project chip, state, handoff, park, health. */
+  @container (max-width: 560px) {
+    .shell-cost, .shell-timer, .btn-voice { display: none; }
+    .shell-title { max-width: 110px; }
+  }
+  @container (max-width: 430px) {
+    .btn-fast, .shell-model { display: none; }  /* model switch still in Cmd+K */
+    .shell-title { max-width: 80px; }
+  }
+
+  /* Unified top-left rail: park/activity/mission toggles share one container */
+  .topleft-rail {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1100;
+    display: flex;
+    gap: 6px;
+  }
+  .topleft-rail .park-toggle,
+  .topleft-rail .activity-toggle {
+    position: static;   /* container owns placement now */
+  }
+  .park-toggle.due {
+    border-color: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
+  }
+  .park-toggle.due .badge { background: #f59e0b; display: inline-block; }
+
+  /* Per-pane project chip (NATO project binding) */
+  .shell-project {
+    border: 1px solid var(--proj-color, #334155);
+    color: var(--proj-color, #94a3b8);
+    background: transparent;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 1px 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .shell-project[data-empty="1"]::after { content: "+ proj"; opacity: 0.55; }
+  .shell-project:hover { filter: brightness(1.25); }
+
+  /* Mission Control */
+  .mission-box { width: min(680px, 94vw); }
+  .mission-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid #1e293b;
+    background: #0b1120;
+    color: #f3f4f6;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mission-date { color: #64748b; font-weight: 500; text-transform: none; letter-spacing: 0; }
+  #mission-body { max-height: 60vh; overflow-y: auto; padding: 10px 12px; }
+  .mission-section {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin: 10px 2px 6px;
+  }
+  .mission-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: #111c2f;
+    margin-bottom: 5px;
+    color: #cbd5e1;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .mission-row:hover { background: #16233c; }
+  .mission-row .mnum {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #0b1120;
+    flex-shrink: 0;
+  }
+  .mission-row .mgrow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mission-row .mmeta { color: #64748b; font-size: 11px; white-space: nowrap; }
+  .mission-row.due-row { border-left: 3px solid #f59e0b; }
+  .mission-row.overdue-row { border-left: 3px solid #ef4444; }
+  .mission-empty { color: #475569; font-size: 12px; padding: 4px 10px 8px; }
+
+  /* Command palette (Cmd+K) */
+  .cmdk-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.55);
+    z-index: 2100;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+  }
+  .cmdk-overlay.open { display: flex; }
+  .cmdk-box {
+    width: min(560px, 92vw);
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+  }
+  #cmdk-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0b1120;
+    color: #f3f4f6;
+    border: none;
+    border-bottom: 1px solid #1e293b;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+  }
+  #cmdk-input::placeholder { color: #475569; }
+  #cmdk-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    max-height: 46vh;
+    overflow-y: auto;
+  }
+  #cmdk-list li {
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  #cmdk-list li .cmdk-hint-right {
+    color: #64748b;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  #cmdk-list li.active {
+    background: #1d4ed8;
+    color: #ffffff;
+  }
+  #cmdk-list li.active .cmdk-hint-right { color: #bfdbfe; }
+  #cmdk-list li.cmdk-empty { color: #64748b; cursor: default; }
+  .cmdk-hint {
+    padding: 7px 12px;
+    border-top: 1px solid #1e293b;
+    color: #64748b;
+    font-size: 11px;
+    background: #0b1120;
+  }
+  .cmdk-hint kbd {
+    background: #1e293b;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
 
   /* Permission aggregator tray */
   .perm-tray {
@@ -2152,10 +2363,25 @@ body {
 </head>
 <body>
 
-<button class="park-toggle" id="park-toggle" title="Parked tasks">
-  Parked <span class="badge" id="park-toggle-count" data-empty="1">0</span>
-</button>
-<button class="activity-toggle" id="activity-toggle" title="Activity log">Activity</button>
+<div class="topleft-rail" id="topleft-rail">
+  <button class="park-toggle" id="park-toggle" title="Parked tasks">
+    Parked <span class="badge" id="park-toggle-count" data-empty="1">0</span>
+  </button>
+  <button class="activity-toggle" id="activity-toggle" title="Activity log">Activity</button>
+  <button class="activity-toggle" id="mission-toggle" title="Mission Control (Cmd+M)">Mission</button>
+</div>
+
+<!-- Mission Control overlay (Cmd+M) -->
+<div class="cmdk-overlay" id="mission-overlay" role="dialog" aria-label="Mission Control">
+  <div class="cmdk-box mission-box">
+    <div class="mission-header">
+      <span>Mission Control</span>
+      <span class="mission-date" id="mission-date"></span>
+    </div>
+    <div id="mission-body"></div>
+    <div class="cmdk-hint"><kbd>Esc</kbd> close &bull; click a pane row to focus it</div>
+  </div>
+</div>
 
 <aside class="activity-side" id="activity-side" role="region" aria-label="Activity log">
   <div class="activity-head">
@@ -2206,6 +2432,7 @@ body {
     <div class="shell-header">
       <div class="shell-number">1</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="0">Claude 1</div>
+      <button class="shell-project" data-shell="0" data-empty="1" title="Project for this pane (click to change)" aria-label="Pane project"></button>
       <div class="shell-status">
         <button class="btn-voice" data-shell="0" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-0"></span></span></button>
         <span class="shell-focus-dot"></span>
@@ -2241,6 +2468,7 @@ body {
     <div class="shell-header">
       <div class="shell-number">2</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="1">Claude 2</div>
+      <button class="shell-project" data-shell="1" data-empty="1" title="Project for this pane (click to change)" aria-label="Pane project"></button>
       <div class="shell-status">
         <button class="btn-voice" data-shell="1" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-1"></span></span></button>
         <span class="shell-focus-dot"></span>
@@ -2276,6 +2504,7 @@ body {
     <div class="shell-header">
       <div class="shell-number">3</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="2">Claude 3</div>
+      <button class="shell-project" data-shell="2" data-empty="1" title="Project for this pane (click to change)" aria-label="Pane project"></button>
       <div class="shell-status">
         <button class="btn-voice" data-shell="2" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-2"></span></span></button>
         <span class="shell-focus-dot"></span>
@@ -2309,6 +2538,7 @@ body {
     <div class="shell-header">
       <div class="shell-number">4</div>
       <div class="shell-title" contenteditable="true" spellcheck="false" role="textbox" aria-label="Pane title, click to rename" data-shell="3">Claude 4</div>
+      <button class="shell-project" data-shell="3" data-empty="1" title="Project for this pane (click to change)" aria-label="Pane project"></button>
       <div class="shell-status">
         <button class="btn-voice" data-shell="3" title="Voice mode" aria-label="Voice mode">&#x1F3A4;<span class="voice-level-bar"><span class="voice-level-fill" id="voice-level-3"></span></span></button>
         <span class="shell-focus-dot"></span>
@@ -2356,6 +2586,17 @@ body {
   <span class="status-dot disconnected" id="status" title="disconnected"></span>
 </div>
 
+<!-- Command palette (Cmd+K) -->
+<div class="cmdk-overlay" id="cmdk-overlay" role="dialog" aria-label="Command palette">
+  <div class="cmdk-box">
+    <input id="cmdk-input" type="text" placeholder="Type a command...  ( / = run command in pane,  &gt; = type text to pane )"
+           autocomplete="off" spellcheck="false" aria-label="Command search">
+    <ul id="cmdk-list" role="listbox"></ul>
+    <div class="cmdk-hint"><kbd>&uarr;&darr;</kbd> navigate &bull; <kbd>Enter</kbd> run &bull; <kbd>Esc</kbd> close</div>
+  </div>
+</div>
+<input type="file" id="cmdk-file" multiple style="display:none" aria-hidden="true">
+
 <!-- Keyboard shortcuts overlay -->
 <div class="shortcuts-overlay" id="shortcuts">
   <div class="shortcuts-box">
@@ -2369,6 +2610,7 @@ body {
       </div>
       <div>
         <b style="color:var(--text-secondary)">Actions</b><br>
+        <kbd>&#8984;K</kbd>/<kbd>Ctrl+K</kbd> Command palette<br>
         <kbd>Ctrl+F</kbd> Search pane<br>
         <kbd>Ctrl+L</kbd> Clear pane<br>
         <kbd>Ctrl+Shift+L</kbd> Layout<br>
@@ -2580,20 +2822,7 @@ for (let i = 0; i < 4; i++) {
     shellEls[i].classList.remove('drop-target');
     focusLocked = true;
     setActiveShell(i);
-    const MAX = 50 * 1024 * 1024;
-    for (const file of e.dataTransfer.files) {
-      if (file.size > MAX) {
-        alert(`${file.name} is ${(file.size/1024/1024).toFixed(1)}MB, over the 50MB drop limit.`);
-        continue;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const b64 = (reader.result || '').toString().split(',')[1] || '';
-        ws.send(JSON.stringify({ type: 'upload', shell: i, filename: file.name, data: b64 }));
-      };
-      reader.onerror = () => alert(`Failed to read ${file.name}`);
-      reader.readAsDataURL(file);
-    }
+    qmUploadFiles(i, e.dataTransfer.files);
   });
 }
 
@@ -2813,9 +3042,6 @@ function connect() {
   let replayDone = false;
   setTimeout(() => { replayDone = true; terms.forEach(t => t.scrollToBottom()); }, 3000);
 
-  const approvalBuffers = ['', '', '', ''];
-  const approvalTimers = [null, null, null, null];
-
   function needsInput(text) {
     const patterns = [
       /\(y\)/i,
@@ -2841,47 +3067,9 @@ function connect() {
   // Debounced TTS trigger - waits for output to settle before speaking
   const ttsTriggerTimers = [null, null, null, null];
 
-  function isPermissionPrompt(text) {
-    // Check last 200 chars (where the prompt lives) to reduce false positives
-    const tail = text.slice(-200);
-    return /Allow this action\??/i.test(tail) || /\[Y\/n\]/i.test(tail) || /\(y\)/i.test(tail)
-      || /\bapprove\b.*\?/i.test(tail)
-      || /Do you want to .+\?/i.test(tail) || /Proceed\?/i.test(tail)
-      || /Allow\s+(Read|Write|Bash|Edit|Execute|Create|Delete|Glob|Grep|Skill)/i.test(tail);
-  }
-
-  function isSecurityRisk(text) {
-    const lower = text.toLowerCase();
-    // Only block truly destructive / irreversible operations
-    const dangerous = [
-      'rm -rf', 'rm -r ', 'rm -fr',                    // recursive delete
-      'drop table', 'drop database', 'truncate table', // data destruction
-      'sudo ',                                          // privilege escalation
-      'git push --force', 'git push -f',                // force push
-      'git reset --hard',                               // discard all changes
-      'npm publish', 'yarn publish', 'pnpm publish',    // publish to registry
-      'mkfs', 'dd if=',                                 // disk-level destruction
-      'kubectl delete',                                 // k8s resource deletion
-      '> /dev/',                                        // device writes
-      'format c:', 'deltree',                           // legacy destructive
-      'chmod 777', 'chmod -r ',                         // dangerous permissions
-      '| sh', '| bash', '| zsh',                        // pipe to shell
-      'terraform destroy',                              // infra destruction
-      'docker system prune',                            // container cleanup
-      'aws s3 rm',                                      // cloud storage deletion
-      'heroku apps:destroy',                            // platform destruction
-      'shutdown', 'reboot',                             // system power
-      'iptables -f',                                    // flush firewall
-      'launchctl unload',                               // disable macos services
-    ];
-    if (dangerous.some(p => lower.includes(p))) return true;
-    // Catch git push with --force anywhere (e.g. git push origin main --force)
-    if (/git\s+push\b.*--force\b/.test(lower)) return true;
-    if (/git\s+push\b.*\s-f\b/.test(lower)) return true;
-    // Catch find ... -delete (both terms present in same command context)
-    if (/\bfind\b/.test(lower) && /\s-delete\b/.test(lower)) return true;
-    return false;
-  }
+  // Permission auto-approval now lives server-side (policy.py): green/amber
+  // bands are approved by the server and announced via 'permission_auto';
+  // red bands arrive as 'permission_request' for the tray.
 
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
@@ -2910,29 +3098,6 @@ function connect() {
         }
         const clean = recentOutput[data.shell].replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '');
 
-        // Auto-approve safe permission prompts
-        approvalBuffers[data.shell] += data.text;
-        if (approvalBuffers[data.shell].length > 1000) {
-          approvalBuffers[data.shell] = approvalBuffers[data.shell].slice(-1000);
-        }
-        clearTimeout(approvalTimers[data.shell]);
-        approvalTimers[data.shell] = setTimeout(() => {
-          const cleanApproval = approvalBuffers[data.shell].replace(/\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])/g, '');
-          if (isPermissionPrompt(cleanApproval)) {
-            if (isSecurityRisk(cleanApproval)) {
-              // Risky - focus pane, let user decide
-              focusLocked = false;
-              setActiveShell(data.shell);
-              shellEls[data.shell].style.borderColor = '#f87171';
-              setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
-            } else {
-              // Safe - auto-approve
-              ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: 'y', raw: false }));
-            }
-          }
-          approvalBuffers[data.shell] = '';
-        }, 400);
-
         // Stop timer when prompt detected (task finished)
         if (needsInput(clean)) {
           timerStart[data.shell] = 0;
@@ -2952,9 +3117,11 @@ function connect() {
         }
       }
     } else if (data.type === 'upload_done') {
+      cmdkRememberUpload(data.path);
       // Type the absolute path into the destination pane, surrounded by spaces.
       const pathText = ` ${data.path} `;
       ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: pathText, raw: true }));
+      showToast(`Uploaded to pane ${data.shell + 1}: ${(data.path || '').split('/').pop()}`);
       const el = shellEls[data.shell];
       if (el) {
         el.classList.remove('flash');
@@ -2963,7 +3130,7 @@ function connect() {
       }
     } else if (data.type === 'upload_error') {
       console.error('Upload failed:', data.filename, data.error);
-      alert(`Upload failed (${data.filename}): ${data.error}`);
+      showToast(`Upload failed (${data.filename}): ${data.error}`, true);
     } else if (data.type === 'voice_response') {
       // Server extracted clean prose - speak it via Kokoro
       if (voiceTargetPane === data.shell && data.text) {
@@ -2980,6 +3147,20 @@ function connect() {
       (data.states || []).forEach(s => applyState(s.shell, s.state));
     } else if (data.type === 'permission_request') {
       addPermissionRequest(data);
+      if (data.band === 'red') {
+        // Destructive/outward-facing: pull the user to the pane.
+        focusLocked = false;
+        setActiveShell(data.shell);
+        shellEls[data.shell].style.borderColor = '#f87171';
+        setTimeout(() => { shellEls[data.shell].style.borderColor = ''; }, 2000);
+      }
+      refreshActivityIfOpen();
+    } else if (data.type === 'permission_auto') {
+      // Server auto-approved under policy. Amber gets a visible notice;
+      // green is silent (still visible in the activity drawer + bus log).
+      if (data.band === 'amber') {
+        showToast(`Auto-approved p${data.shell + 1}: ${(data.question || 'action').slice(0, 60)}`);
+      }
       refreshActivityIfOpen();
     } else if (data.type === 'permission_resolved') {
       removePermissionRequest(data.id);
@@ -3090,6 +3271,9 @@ function describeEvent(ev) {
   }
   if (ev.type === 'permission_resolved') {
     return `${pane} resolved (${ev.reason || 'closed'})`;
+  }
+  if (ev.type === 'permission_auto') {
+    return `${pane} auto-approved [${ev.band || '?'}]: ${(ev.question || '').slice(0, 70)}`;
   }
   if (ev.type === 'handoff') {
     return `pane ${ev.source + 1} → pane ${ev.target + 1}`
@@ -3277,6 +3461,7 @@ function renderReplay(replay) {
       else if (ev.type === 'handoff') label = `p${ev.source+1} → p${ev.target+1}` + (ev.instruction ? `: ${ev.instruction.slice(0,50)}` : '');
       else if (ev.type === 'permission_request') label = `${pane}asked: ${(ev.question||'').slice(0,50)}`;
       else if (ev.type === 'permission_resolved') label = `${pane}${ev.reason||'closed'}`;
+      else if (ev.type === 'permission_auto') label = `${pane}auto [${ev.band||'?'}]: ${(ev.question||'').slice(0,50)}`;
       else label = ev.type;
       row.textContent = `${hhmmss}  ${label}`;
       evWrap.appendChild(row);
@@ -3764,6 +3949,16 @@ function buildParkCard(t) {
   });
   actions.appendChild(cycleBtn);
 
+  if (t.status !== 'done') {
+    const doneBtn = document.createElement('button');
+    doneBtn.textContent = 'Done';
+    doneBtn.title = 'Mark done';
+    doneBtn.addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'parked_update', id: t.id, status: 'done' }));
+    });
+    actions.appendChild(doneBtn);
+  }
+
   const editBtn = document.createElement('button');
   editBtn.textContent = 'Edit';
   editBtn.addEventListener('click', () => editParkedInline(card, t));
@@ -3772,8 +3967,8 @@ function buildParkCard(t) {
   const delBtn = document.createElement('button');
   delBtn.className = 'danger';
   delBtn.textContent = 'Del';
-  delBtn.addEventListener('click', () => {
-    if (confirm(`Delete parked task "${t.title}"?`)) {
+  delBtn.addEventListener('click', async () => {
+    if (await qmConfirm(`Delete parked task "${t.title}"?`, 'Delete')) {
       ws.send(JSON.stringify({ type: 'parked_delete', id: t.id }));
     }
   });
@@ -4050,8 +4245,8 @@ inputEl.addEventListener('keydown', (e) => {
 });
 
 // --- Buttons ---
-btnExit.addEventListener('click', () => {
-  if (!confirm('Exit all Claude instances?')) return;
+btnExit.addEventListener('click', async () => {
+  if (!(await qmConfirm('Exit all Claude instances?', 'Exit all'))) return;
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'exit_all' }));
   }
@@ -4111,6 +4306,12 @@ let voiceAnalyser = null;
 let voiceSourceNode = null;
 let currentTTSAudio = null;
 let voiceLevelRAF = null;
+// Speech-activity gate + echo suppression (stops Whisper hallucinating on
+// silence and stops it transcribing our own TTS playback back as "input").
+const SPEECH_RMS_GATE = 0.02;   // peak RMS a chunk must reach to count as speech
+let voiceChunkPeakRMS = 0;      // peak RMS observed during the current chunk
+let ttsTouchedChunk = false;    // TTS played during the current chunk
+let ttsSpeakingUntil = 0;       // timestamp: suppress capture until TTS tail clears
 
 // TTS engine settings (persisted)
 let ttsEngine   = localStorage.getItem('quadmux-tts-engine') || 'kokoro';
@@ -4171,6 +4372,7 @@ function startLevelMonitor() {
       return;
     }
     const rms = getAudioRMS();
+    if (rms > voiceChunkPeakRMS) voiceChunkPeakRMS = rms; // track loudest frame this chunk
     const level = Math.min(rms * 15, 1); // scale up for visibility
     const pct = Math.round(level * 100);
     const btn = document.querySelector(`.btn-voice[data-shell="${voiceTargetPane}"]`);
@@ -4408,8 +4610,20 @@ function listenChunk() {
 
     recorder.onstop = async () => {
       if (chunks.length === 0 || !voiceListening) { resolve(''); return; }
+      // Echo guard: drop the chunk if our own TTS played during it (or is still
+      // in its tail), else Whisper transcribes JARVIS back as user input.
+      if (ttsTouchedChunk || currentTTSAudio || Date.now() < ttsSpeakingUntil) {
+        console.log('Voice: dropped chunk (TTS echo window)');
+        resolve(''); return;
+      }
+      // Speech-activity gate: if the loudest frame never crossed the speech
+      // threshold, it was silence or room noise, so skip to avoid hallucinations.
+      if (voiceChunkPeakRMS < SPEECH_RMS_GATE) {
+        console.log('Voice: dropped chunk (below speech gate, peak=' + voiceChunkPeakRMS.toFixed(4) + ')');
+        resolve(''); return;
+      }
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      console.log('Voice: recorded chunk, size=' + blob.size + ' bytes');
+      console.log('Voice: recorded chunk, size=' + blob.size + ' bytes, peakRMS=' + voiceChunkPeakRMS.toFixed(4));
       if (blob.size < 1000) { resolve(''); return; }
       try {
         const form = new FormData();
@@ -4428,6 +4642,8 @@ function listenChunk() {
       }
     };
     recorder.onerror = (e) => { console.warn('MediaRecorder error:', e); resolve(''); };
+    voiceChunkPeakRMS = 0;      // reset speech-energy tracker for this chunk
+    ttsTouchedChunk = false;    // reset echo tracker for this chunk
     recorder.start(500);
     console.log('Voice: recording chunk...');
 
@@ -4480,7 +4696,7 @@ async function startVoice(idx) {
       await fetchVoiceHealth();
     }
     if (voiceHealth.whisper !== 'ok') {
-      alert('Whisper STT is not running and could not be started.\nCheck: voicemode service whisper start');
+      showToast('Whisper STT is not running. Check: voicemode service whisper start', true);
       return;
     }
   }
@@ -4516,7 +4732,7 @@ async function startVoice(idx) {
     voiceLoop(idx);
   } catch(e) {
     console.error('Failed to start voice:', e);
-    alert('Microphone access failed. Check browser permissions.');
+    showToast('Microphone access failed. Check browser permissions.', true);
     voiceTargetPane = -1;
   }
 }
@@ -4559,8 +4775,11 @@ async function speakResponse(paneIdx, text) {
     const audioUrl = URL.createObjectURL(audioBlob);
     if (currentTTSAudio) { currentTTSAudio.pause(); }
     currentTTSAudio = new Audio(audioUrl);
-    currentTTSAudio.onended = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; };
-    currentTTSAudio.onerror = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; };
+    ttsTouchedChunk = true;  // this chunk overlaps our own speech, so drop it
+    // Keep suppressing capture for a short tail after playback ends so the
+    // decaying room echo does not get recorded into the next chunk.
+    currentTTSAudio.onended = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; ttsSpeakingUntil = Date.now() + 800; };
+    currentTTSAudio.onerror = () => { URL.revokeObjectURL(audioUrl); currentTTSAudio = null; ttsSpeakingUntil = Date.now() + 800; };
     await currentTTSAudio.play();
   } catch(e) {
     console.warn('TTS error (' + ttsEngine + '):', e);
@@ -4608,6 +4827,582 @@ setInterval(updateTimers, 1000);
 shortcutsOverlay.addEventListener('click', (e) => {
   if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
 });
+
+// --- Styled confirm dialog (replaces native confirm(); matches the skin) ---
+function qmConfirm(message, okLabel = 'Confirm') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'cmdk-overlay open';
+    overlay.style.zIndex = '2300';
+    const box = document.createElement('div');
+    box.className = 'cmdk-box';
+    box.style.width = 'min(400px, 90vw)';
+    const msg = document.createElement('div');
+    msg.style.cssText = 'padding:18px 18px 12px;color:#e2e8f0;font-size:13.5px;line-height:1.5';
+    msg.textContent = message;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px';
+    const mk = (label, danger) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '
+        + (danger ? '#b91c1c;background:#dc2626;color:#fff' : '#334155;background:#1e293b;color:#cbd5e1');
+      return b;
+    };
+    const cancel = mk('Cancel', false);
+    const ok = mk(okLabel, true);
+    const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey, true); resolve(val); };
+    cancel.addEventListener('click', () => close(false));
+    ok.addEventListener('click', () => close(true));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(true); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    row.append(cancel, ok);
+    box.append(msg, row);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    ok.focus();
+  });
+}
+
+// --- Projects per pane (NATO system, client-side, localStorage) ---
+const QM_PROJECTS = {
+  Alpha:   { name: 'Health & Wellness',  folder: 'Alpha - Health & Wellness (HW)',  color: '#34d399' },
+  Bravo:   { name: 'Smart Hydration',    folder: 'Bravo - Smart Hydration (SH)',    color: '#38bdf8' },
+  Charlie: { name: 'Ignite Bermuda',     folder: 'Charlie - Ignite Bermuda (IGN)',  color: '#fb923c' },
+  Delta:   { name: 'Property Co',        folder: 'Delta - Property Co (PROP)',      color: '#fb7185' },
+  Echo:    { name: 'Business X',         folder: 'Echo - Business X (Bx)',          color: '#a78bfa' },
+  Foxtrot: { name: 'Finances',           folder: 'Foxtrot - Finances (PF)',         color: '#facc15' },
+  Golf:    { name: 'AI & Automation',    folder: 'Golf - AI & Automation (AI)',     color: '#22d3ee' },
+  Hotel:   { name: 'Other Stuff',        folder: 'Hotel - Other Stuff',             color: '#94a3b8' },
+};
+
+function qmPaneProjects() {
+  try { return JSON.parse(localStorage.getItem('qm-pane-projects') || '{}'); }
+  catch (e) { return {}; }
+}
+function qmRenderProjectChips() {
+  const assigned = qmPaneProjects();
+  document.querySelectorAll('.shell-project').forEach(chip => {
+    const key = assigned[chip.dataset.shell];
+    const p = key && QM_PROJECTS[key];
+    if (p) {
+      chip.textContent = key;
+      chip.dataset.empty = '0';
+      chip.style.setProperty('--proj-color', p.color);
+    } else {
+      chip.textContent = '';
+      chip.dataset.empty = '1';
+      chip.style.removeProperty('--proj-color');
+    }
+  });
+}
+function qmAssignProject(pane, key) {
+  const assigned = qmPaneProjects();
+  if (key) assigned[pane] = key; else delete assigned[pane];
+  localStorage.setItem('qm-pane-projects', JSON.stringify(assigned));
+  qmRenderProjectChips();
+  if (!key) { showToast(`Pane ${pane + 1}: project cleared`); return; }
+  const p = QM_PROJECTS[key];
+  cmdkSend(pane,
+    `[Project context] This pane is now dedicated to ${key} (${p.name}). `
+    + `Project folder: ~/Desktop/${p.folder}. Read that folder's CLAUDE.md and key docs `
+    + `if you haven't already, keep all work scoped to this project, and confirm in one line.`);
+  showToast(`Pane ${pane + 1} -> ${key} (${p.name})`);
+}
+document.querySelectorAll('.shell-project').forEach(chip => {
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    focusLocked = true;
+    setActiveShell(parseInt(chip.dataset.shell, 10));
+    cmdkOpen();
+    cmdkInput.value = 'project ';
+    cmdkRender();
+  });
+});
+
+// --- Role presets: one-click pane specialisation (prime text into pane) ---
+const QM_ROLES = {
+  Researcher: 'You are the Research pane. Job: web research, market intel, source gathering. '
+    + 'Prefer firecrawl / WebSearch / deep-research skills, cite sources, and deliver findings '
+    + 'as tight bullet summaries ready to hand off.',
+  Drafter: 'You are the Drafting & comms pane. Job: emails, one-pagers, documents. '
+    + 'Gmail drafts only, never send. Plain text, no em dashes, match the sender alias conventions.',
+  Builder: 'You are the Build pane. Job: code, automation, infrastructure. '
+    + 'Verify changes actually work before claiming done; tests or a smoke run, not assumptions.',
+  Reviewer: 'You are the Review pane. Job: adversarial review of work handed off from other panes. '
+    + 'Hunt for errors, gaps, and risks. Give a clear verdict plus concrete fixes.',
+};
+
+// --- Handoff flow templates (prefilled handoff_request instructions) ---
+const QM_FLOWS = {
+  'Draft it': 'Turn this into a draft: an email or one-pager, whichever fits. Plain text, no em dashes, Gmail draft only, never send.',
+  'Review it': 'Adversarially review this output: errors, gaps, risks. Clear verdict plus concrete fixes.',
+  'Summarise it': 'Summarise this into 5 tight bullets for Sean: what happened, what matters, what to do next.',
+};
+
+// --- Follow-up watcher: parked tasks with a due follow_up_at surface even
+// --- with the drawer closed (toast + browser notification + amber badge).
+const qmFollowupNotified = new Set();
+function qmCheckFollowups() {
+  const now = Date.now() / 1000;
+  let anyDue = false;
+  parkedTasks.forEach(t => {
+    if (t.status === 'done' || !t.follow_up_at) return;
+    if (t.follow_up_at > now) return;
+    anyDue = true;
+    if (qmFollowupNotified.has(t.id)) return;
+    qmFollowupNotified.add(t.id);
+    const label = `Follow-up due: ${t.title}` + (t.waiting_on ? ` (waiting on ${t.waiting_on})` : '');
+    showToast(label, true);
+    if (notifPermission === 'granted') {
+      try {
+        const n = new Notification(label, { body: 'Open the Parked drawer to action it.', tag: `qm-followup-${t.id}` });
+        n.onclick = () => { window.focus(); parkSide.classList.add('open'); renderParkSidebar(); n.close(); };
+      } catch (_) { /* notification blocked: toast already shown */ }
+    }
+  });
+  parkToggleBtn.classList.toggle('due', anyDue);
+}
+setInterval(qmCheckFollowups, 30000);
+setTimeout(qmCheckFollowups, 4000); // after initial parked_list lands
+
+// --- Mission Control (Ctrl+M / rail button / palette) ---
+const missionOverlay = document.getElementById('mission-overlay');
+const missionBody = document.getElementById('mission-body');
+const PANE_COLORS = ['#4ade80', '#60a5fa', '#facc15', '#c084fc'];
+
+function qmMissionRender() {
+  document.getElementById('mission-date').textContent = new Date().toLocaleString(undefined,
+    { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  missionBody.replaceChildren();
+  const section = (label) => {
+    const h = document.createElement('div');
+    h.className = 'mission-section';
+    h.textContent = label;
+    missionBody.appendChild(h);
+  };
+  const empty = (text) => {
+    const d = document.createElement('div');
+    d.className = 'mission-empty';
+    d.textContent = text;
+    missionBody.appendChild(d);
+  };
+
+  // Follow-ups
+  section('Follow-ups');
+  const now = Date.now() / 1000;
+  const followups = [...parkedTasks.values()]
+    .filter(t => t.status !== 'done' && t.follow_up_at)
+    .sort((a, b) => a.follow_up_at - b.follow_up_at);
+  if (!followups.length) empty('Nothing waiting on a date.');
+  followups.forEach(t => {
+    const row = document.createElement('div');
+    const overdue = t.follow_up_at <= now;
+    row.className = 'mission-row ' + (overdue ? 'overdue-row' : 'due-row');
+    const grow = document.createElement('span');
+    grow.className = 'mgrow';
+    grow.textContent = t.title + (t.waiting_on ? ` (waiting on ${t.waiting_on})` : '');
+    const meta = document.createElement('span');
+    meta.className = 'mmeta';
+    meta.textContent = new Date(t.follow_up_at * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    row.append(grow, meta);
+    row.addEventListener('click', () => {
+      qmMissionClose();
+      parkSide.classList.add('open');
+      renderParkSidebar();
+    });
+    missionBody.appendChild(row);
+  });
+
+  // Panes
+  section('Panes');
+  const assigned = qmPaneProjects();
+  for (let i = 0; i < 4; i++) {
+    const row = document.createElement('div');
+    row.className = 'mission-row';
+    const num = document.createElement('span');
+    num.className = 'mnum';
+    num.style.background = PANE_COLORS[i];
+    num.textContent = String(i + 1);
+    const grow = document.createElement('span');
+    grow.className = 'mgrow';
+    const title = (document.querySelector(`.shell-title[data-shell="${i}"]`)?.textContent || '').trim();
+    const proj = assigned[i] ? `[${assigned[i]}] ` : '';
+    grow.textContent = proj + (title || `Claude ${i + 1}`);
+    const meta = document.createElement('span');
+    meta.className = 'mmeta';
+    const state = document.getElementById(`state-${i}`)?.textContent || '';
+    const model = document.querySelector(`.shell-model[data-shell="${i}"]`)?.value || '';
+    const cost = document.getElementById(`cost-${i}`)?.textContent || '';
+    meta.textContent = [state, model, cost].filter(Boolean).join(' | ');
+    row.append(num, grow, meta);
+    row.addEventListener('click', () => {
+      qmMissionClose();
+      focusLocked = true;
+      setActiveShell(i);
+    });
+    missionBody.appendChild(row);
+  }
+
+  // Parked summary
+  const counts = {};
+  parkedTasks.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
+  const open = [...parkedTasks.values()].filter(t => t.status !== 'done').length;
+  section(`Parked (${open} open)`);
+  if (!parkedTasks.size) {
+    empty('No parked tasks.');
+  } else {
+    const row = document.createElement('div');
+    row.className = 'mission-row';
+    const grow = document.createElement('span');
+    grow.className = 'mgrow';
+    grow.textContent = Object.entries(counts).map(([s, n]) => `${s}: ${n}`).join('  |  ');
+    row.appendChild(grow);
+    row.addEventListener('click', () => {
+      qmMissionClose();
+      parkSide.classList.add('open');
+      renderParkSidebar();
+    });
+    missionBody.appendChild(row);
+  }
+}
+function qmMissionOpen() { qmMissionRender(); missionOverlay.classList.add('open'); }
+function qmMissionClose() { missionOverlay.classList.remove('open'); }
+document.getElementById('mission-toggle').addEventListener('click', qmMissionOpen);
+missionOverlay.addEventListener('click', (e) => { if (e.target === missionOverlay) qmMissionClose(); });
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'm') {
+    e.preventDefault();
+    e.stopPropagation();
+    if (missionOverlay.classList.contains('open')) qmMissionClose(); else qmMissionOpen();
+  } else if (e.key === 'Escape' && missionOverlay.classList.contains('open')) {
+    e.preventDefault();
+    e.stopPropagation();
+    qmMissionClose();
+  }
+}, true);
+qmRenderProjectChips();
+
+// --- Command palette (Cmd+K / Ctrl+K) ---
+const cmdkOverlay = document.getElementById('cmdk-overlay');
+const cmdkInput = document.getElementById('cmdk-input');
+const cmdkList = document.getElementById('cmdk-list');
+const cmdkFile = document.getElementById('cmdk-file');
+let cmdkIndex = 0;
+let cmdkItems = [];
+
+// Skills worth one-keystroke access; palette sends "/name" to the target pane.
+const CMDK_SKILLS = ['sh-review', 'meeting-prep', 'draft-investor', 'qa', 'ship', 'code-review', 'investigate'];
+
+function cmdkTarget() { return activeShell >= 0 ? activeShell : 0; }
+function cmdkPaneLabel(i) {
+  const t = document.querySelector(`.shell-title[data-shell="${i}"]`);
+  const name = (t?.textContent || '').trim();
+  return name ? `${i + 1}: ${name}` : `pane ${i + 1}`;
+}
+function cmdkSend(shell, text, raw = false) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'input', shell, text, raw }));
+  }
+}
+
+// Recent upload paths (localStorage, newest first, max 10)
+function cmdkRememberUpload(path) {
+  try {
+    const key = 'qm-recent-uploads';
+    const list = JSON.parse(localStorage.getItem(key) || '[]').filter(p => p !== path);
+    list.unshift(path);
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 10)));
+  } catch (e) { /* localStorage full/blocked: non-fatal */ }
+}
+function cmdkRecentUploads() {
+  try { return JSON.parse(localStorage.getItem('qm-recent-uploads') || '[]'); }
+  catch (e) { return []; }
+}
+
+function cmdkCommands(query) {
+  const t = cmdkTarget();
+  const tl = cmdkPaneLabel(t);
+  const cmds = [];
+
+  // Dynamic: "/xyz" runs a command in a pane; ">text" types text to a pane
+  const qt = query.trim();
+  if (qt.startsWith('/') && qt.length > 1) {
+    cmds.push({ label: `Run ${qt} in ${tl}`, hint: 'command', pin: true,
+                run: () => cmdkSend(t, qt) });
+    for (let i = 0; i < 4; i++) {
+      if (i === t) continue;
+      cmds.push({ label: `Run ${qt} in ${cmdkPaneLabel(i)}`, hint: 'command', pin: true,
+                  run: () => cmdkSend(i, qt) });
+    }
+    return cmds; // command mode: no other entries
+  }
+  if (qt.startsWith('>') && qt.length > 1) {
+    const text = qt.slice(1).trim();
+    cmds.push({ label: `Type "${text.slice(0, 50)}" to ${tl}`, hint: 'text', pin: true,
+                run: () => cmdkSend(t, text) });
+    for (let i = 0; i < 4; i++) {
+      if (i === t) continue;
+      cmds.push({ label: `Type "${text.slice(0, 40)}" to ${cmdkPaneLabel(i)}`, hint: 'text', pin: true,
+                  run: () => cmdkSend(i, text) });
+    }
+    return cmds;
+  }
+
+  // Panes
+  for (let i = 0; i < 4; i++) {
+    cmds.push({ label: `Focus ${cmdkPaneLabel(i)}`, hint: `ctrl+${i + 1}`, keywords: 'pane go switch',
+                run: () => { focusLocked = true; setActiveShell(i); } });
+  }
+  cmds.push({ label: 'Back to input bar', hint: 'esc', keywords: 'unfocus bar',
+              run: () => { focusLocked = false; setActiveShell(-1); } });
+
+  // Pane actions (target = focused pane, falls back to pane 1)
+  cmds.push({ label: `Park task (${tl})`, keywords: 'parked save later',
+              run: () => {
+                const titleEl = document.querySelector(`.shell-title[data-shell="${t}"]`);
+                parkFormDefaults = { pane: t, title: (titleEl?.textContent || '').trim() };
+                parkFormOpen = true;
+                parkSide.classList.add('open');
+                renderParkSidebar();
+                const input = document.getElementById('park-form-title');
+                if (input) { input.focus(); input.select(); }
+              } });
+  cmds.push({ label: `Handoff from ${tl}`, keywords: 'hand off transfer output',
+              run: () => {
+                const btn = document.querySelector(`.btn-handoff[data-source="${t}"]`);
+                if (btn) openHandoffPopover(btn, t);
+              } });
+  cmds.push({ label: `Toggle fast mode (${tl})`, keywords: 'speed quick /fast',
+              run: () => cmdkSend(t, '/fast') });
+  cmds.push({ label: `Upload file to ${tl}`, keywords: 'attach send file image pdf',
+              run: () => { cmdkFile.dataset.shell = String(t); cmdkFile.click(); } });
+  cmds.push({ label: `Clear ${tl}`, hint: 'ctrl+l', keywords: 'cls wipe terminal',
+              run: () => terms[t].clear() });
+  cmds.push({ label: `Search in ${tl}`, hint: 'ctrl+f', keywords: 'find scrollback',
+              run: () => toggleSearch(t, true) });
+
+  // Models
+  Object.entries(MODEL_LABELS).forEach(([alias, name]) => {
+    cmds.push({ label: `Model: ${name} (${tl})`, keywords: 'switch model ' + alias,
+                run: () => {
+                  if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'set_model', shell: t, model: alias }));
+                  }
+                  syncPaneModelSelect(t, alias);
+                } });
+  });
+
+  // Skills
+  CMDK_SKILLS.forEach(s => {
+    cmds.push({ label: `Skill: /${s} (${tl})`, keywords: 'run skill ' + s,
+                run: () => cmdkSend(t, '/' + s) });
+  });
+
+  // App chrome
+  cmds.push({ label: 'Toggle parked sidebar', keywords: 'tasks drawer park',
+              run: () => { parkSide.classList.toggle('open'); renderParkSidebar(); } });
+  cmds.push({ label: 'Toggle activity log', keywords: 'events drawer history bus',
+              run: () => activityToggleBtn.click() });
+  cmds.push({ label: 'Past sessions (history)', keywords: 'replay sessions old',
+              run: () => document.getElementById('open-sessions').click() });
+  cmds.push({ label: 'Toggle theme', keywords: 'dark light jarvis skin',
+              run: () => btnTheme.click() });
+  layouts.forEach((name, i) => {
+    cmds.push({ label: `Layout: ${name}`, hint: i === (currentLayout + 1) % layouts.length ? 'ctrl+shift+l' : '',
+                keywords: 'grid stack columns arrange', run: () => setLayout(i) });
+  });
+  cmds.push({ label: 'Clear all panes', keywords: 'cls wipe everything',
+              run: () => terms.forEach(term => term.clear()) });
+  cmds.push({ label: 'Keyboard shortcuts', hint: '?', keywords: 'help keys bindings',
+              run: () => shortcutsOverlay.classList.add('open') });
+
+  // Projects (NATO binding for the target pane)
+  Object.entries(QM_PROJECTS).forEach(([key, p]) => {
+    cmds.push({ label: `Project: ${key} - ${p.name} (${tl})`, keywords: 'project bind nato ' + key + ' ' + p.name,
+                run: () => qmAssignProject(t, key) });
+  });
+  cmds.push({ label: `Project: clear (${tl})`, keywords: 'project unbind remove none',
+              run: () => qmAssignProject(t, null) });
+
+  // Role presets
+  Object.entries(QM_ROLES).forEach(([role, prime]) => {
+    cmds.push({ label: `Preset: ${role} (${tl})`, keywords: 'role preset ' + role,
+                run: () => { cmdkSend(t, `[Role] ${prime}`); showToast(`Pane ${t + 1} -> ${role}`); } });
+  });
+
+  // Handoff flow templates (target pane hands to the next pane)
+  Object.entries(QM_FLOWS).forEach(([flow, instruction]) => {
+    const dest = (t + 1) % 4;
+    cmds.push({ label: `Flow: ${flow} (${tl} -> ${cmdkPaneLabel(dest)})`, keywords: 'handoff flow template ' + flow,
+                run: () => {
+                  ws.send(JSON.stringify({ type: 'handoff_request', source: t, target: dest, instruction }));
+                } });
+  });
+
+  // Mission Control
+  cmds.push({ label: 'Mission Control', hint: 'ctrl+m', keywords: 'dashboard overview home followups',
+              run: () => qmMissionOpen() });
+
+  // Recent uploads
+  cmdkRecentUploads().forEach(p => {
+    const base = p.split('/').pop();
+    cmds.push({ label: `Insert path: ${base}`, hint: 'recent upload', keywords: 'upload path file ' + base,
+                run: () => cmdkSend(t, ` ${p} `, true) });
+  });
+
+  return cmds;
+}
+
+// Subsequence fuzzy match; rank: prefix > substring > subsequence
+function cmdkScore(query, cmd) {
+  if (!query) return 1;
+  const hay = (cmd.label + ' ' + (cmd.keywords || '')).toLowerCase();
+  const q = query.toLowerCase();
+  if (hay.startsWith(q)) return 3;
+  if (hay.includes(q)) return 2;
+  let i = 0;
+  for (const ch of hay) { if (ch === q[i]) i++; if (i === q.length) return 1; }
+  return 0;
+}
+
+function cmdkRender() {
+  const query = cmdkInput.value;
+  const all = cmdkCommands(query);
+  cmdkItems = all
+    .map(c => ({ c, s: c.pin ? 4 : cmdkScore(query, c) }))
+    .filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.c);
+  cmdkIndex = Math.min(cmdkIndex, Math.max(0, cmdkItems.length - 1));
+
+  cmdkList.replaceChildren();
+  if (!cmdkItems.length) {
+    const li = document.createElement('li');
+    li.className = 'cmdk-empty';
+    li.textContent = 'No matching commands';
+    cmdkList.appendChild(li);
+    return;
+  }
+  cmdkItems.slice(0, 12).forEach((c, i) => {
+    const li = document.createElement('li');
+    li.setAttribute('role', 'option');
+    if (i === cmdkIndex) li.classList.add('active');
+    const label = document.createElement('span');
+    label.textContent = c.label;
+    li.appendChild(label);
+    if (c.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'cmdk-hint-right';
+      hint.textContent = c.hint;
+      li.appendChild(hint);
+    }
+    li.addEventListener('click', () => cmdkRun(c));
+    li.addEventListener('mousemove', () => {
+      if (cmdkIndex !== i) { cmdkIndex = i; cmdkRender(); }
+    });
+    cmdkList.appendChild(li);
+  });
+}
+
+function cmdkOpen() {
+  cmdkInput.value = '';
+  cmdkIndex = 0;
+  cmdkOverlay.classList.add('open');
+  cmdkRender();
+  cmdkInput.focus();
+}
+function cmdkClose() {
+  cmdkOverlay.classList.remove('open');
+  if (activeShell >= 0) terms[activeShell].focus();
+  else inputEl.focus();
+}
+function cmdkRun(c) {
+  cmdkClose();
+  try { c.run(); } catch (err) { showToast(`Command failed: ${err.message}`, true); }
+}
+
+cmdkInput.addEventListener('input', () => { cmdkIndex = 0; cmdkRender(); });
+cmdkInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIndex = Math.min(cmdkIndex + 1, Math.min(cmdkItems.length, 12) - 1); cmdkRender(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkIndex = Math.max(cmdkIndex - 1, 0); cmdkRender(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (cmdkItems[cmdkIndex]) cmdkRun(cmdkItems[cmdkIndex]); }
+  else if (e.key === 'Escape') { e.preventDefault(); cmdkClose(); }
+  e.stopPropagation(); // keep palette keys away from global handlers
+});
+cmdkOverlay.addEventListener('click', (e) => {
+  if (e.target === cmdkOverlay) cmdkClose();
+});
+
+// Hidden file input -> same upload path as drag-drop
+cmdkFile.addEventListener('change', () => {
+  qmUploadFiles(parseInt(cmdkFile.dataset.shell || '0', 10), cmdkFile.files);
+  cmdkFile.value = '';
+});
+
+// Shared upload path: drag-drop, palette file picker, and paste all land here.
+function qmUploadFiles(shell, files) {
+  const MAX = 50 * 1024 * 1024;
+  for (const file of files) {
+    if (file.size > MAX) {
+      showToast(`${file.name} is ${(file.size / 1024 / 1024).toFixed(1)}MB, over the 50MB limit`, true);
+      continue;
+    }
+    showToast(`Uploading ${file.name}...`);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = (reader.result || '').toString().split(',')[1] || '';
+      ws.send(JSON.stringify({ type: 'upload', shell, filename: file.name, data: b64 }));
+    };
+    reader.onerror = () => showToast(`Failed to read ${file.name}`, true);
+    reader.readAsDataURL(file);
+  }
+}
+
+// Paste-to-upload: a pasted image/file goes to the focused pane (pane 1 if none).
+// Text pastes are untouched. Skipped while typing in the palette or park form.
+document.addEventListener('paste', (e) => {
+  const tag = (document.activeElement?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable) {
+    // Let normal fields receive text; still catch image pastes into the bar.
+    if (document.activeElement !== inputEl) return;
+  }
+  const items = e.clipboardData?.items || [];
+  const files = [];
+  for (const it of items) {
+    if (it.kind === 'file') {
+      const f = it.getAsFile();
+      if (f) {
+        // Clipboard screenshots arrive unnamed; give them a stable name.
+        files.push(f.name && f.name !== 'image.png'
+          ? f
+          : new File([f], `pasted_${Date.now()}.png`, { type: f.type }));
+      }
+    }
+  }
+  if (!files.length) return;
+  e.preventDefault();
+  qmUploadFiles(cmdkTarget(), files);
+});
+
+// Capture-phase binding so Cmd+K/Ctrl+K works even when a terminal has focus
+// (xterm's own handlers never see the event).
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    e.stopPropagation();
+    if (cmdkOverlay.classList.contains('open')) cmdkClose();
+    else cmdkOpen();
+  } else if (e.key === 'Escape' && cmdkOverlay.classList.contains('open')) {
+    e.preventDefault();
+    e.stopPropagation();
+    cmdkClose();
+  }
+}, true);
 
 connect();
 inputEl.focus();

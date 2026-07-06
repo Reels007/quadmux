@@ -53,6 +53,7 @@ except ImportError:
 import re
 
 from status_bus import StatusBus
+from policy import PolicyEngine
 import presets as presets_mod
 import worktree as worktree_mod
 import parked as parked_mod
@@ -69,7 +70,95 @@ _save_lock = threading.Lock()
 MAX_BUFFER = 200
 NUM_SHELLS = 4
 bus = None  # initialised in main() once NUM_SHELLS is final
+policy = PolicyEngine()  # permission policy: green/amber auto-approve, red asks
+
+# One-shot restart resume: if ~/.quadmux/resume_next.json maps pane index ->
+# session id, those panes spawn with `--resume <sid>` instead of a fresh
+# session. The file is consumed (deleted) on load so a later cold start is
+# always fresh.
+RESUME_NEXT_PATH = os.path.expanduser("~/.quadmux/resume_next.json")
+
+
+def load_resume_next():
+    try:
+        with open(RESUME_NEXT_PATH) as f:
+            data = json.load(f)
+        os.remove(RESUME_NEXT_PATH)
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def find_session_cwd(sid: str):
+    """Return the original working directory of session ``sid``, or None.
+
+    Claude Code keys sessions by project directory (the cwd at creation), and
+    ``--resume <sid>`` only finds sessions belonging to the *current* cwd's
+    project. A resumed pane must therefore spawn in the session's original
+    cwd, not the server's. Prefer the ``cwd`` field recorded inside the JSONL;
+    fall back to decoding the project folder name (lossy for dashed paths).
+    """
+    import glob as _glob
+    pattern = os.path.join(os.path.expanduser("~/.claude/projects"), "*", f"{sid}.jsonl")
+    matches = _glob.glob(pattern)
+    if not matches:
+        return None
+    try:
+        with open(matches[0]) as f:
+            for _ in range(50):
+                line = f.readline()
+                if not line:
+                    break
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                cwd = entry.get("cwd")
+                if cwd and os.path.isdir(cwd):
+                    return cwd
+    except OSError:
+        pass
+    folder = os.path.basename(os.path.dirname(matches[0]))
+    decoded = "/" if folder == "-" else folder.replace("-", "/")
+    return decoded if os.path.isdir(decoded) else None
 BUS_TICK_INTERVAL = 1.0
+
+# Per-pane model persistence. Each pane's chosen model alias survives restarts
+# by being re-applied as a `--model` arg at spawn. Keyed by pane index (str).
+PANE_MODELS_PATH = os.path.expanduser("~/.quadmux/pane_models.json")
+VALID_MODEL_ALIASES = {"opus", "sonnet", "haiku", "fable", "opusplan", "default"}
+
+
+def load_pane_models():
+    """Return {pane_index_str: alias} of persisted model choices."""
+    try:
+        with open(PANE_MODELS_PATH) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return {str(k): v for k, v in data.items()
+                    if v in VALID_MODEL_ALIASES}
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def save_pane_model(idx, alias):
+    """Persist (or clear, for '' / 'default') a pane's model choice atomically."""
+    models = load_pane_models()
+    if alias in (None, "", "default"):
+        models.pop(str(idx), None)
+    elif alias in VALID_MODEL_ALIASES:
+        models[str(idx)] = alias
+    else:
+        return
+    os.makedirs(os.path.dirname(PANE_MODELS_PATH), exist_ok=True)
+    tmp = PANE_MODELS_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(models, f, indent=2)
+    os.replace(tmp, PANE_MODELS_PATH)
+
 
 # Phase 3: per-pane metadata (role, cwd, branch). Populated when --preset is used.
 pane_meta = []  # list of dicts indexed by shell idx
@@ -471,12 +560,25 @@ async def broadcast(idx, text):
             await _broadcast_state(idx, new_state)
             # Open or close a permission request on the appropriate transition
             if new_state == "awaiting_permission" and prior_state != "awaiting_permission":
-                from status_bus import extract_permission_question
-                question = extract_permission_question(
-                    "".join(shell_buffers[idx][-8:]) + text
-                )
+                from status_bus import extract_permission_question, extract_dialog_block
+                context_raw = "".join(shell_buffers[idx][-8:]) + text
+                question = extract_permission_question(context_raw)
+                # Classify only the dialog box itself (tool + command + question),
+                # not the scrollback: prose like "send the email" in conversation
+                # text must not force an unrelated prompt into the red band.
+                context = extract_dialog_block(context_raw)
+                band, rule = policy.classify(context, question)
                 req = bus.open_permission(idx, question)
-                await _broadcast_permission_request(req)
+                req["band"] = band
+                if band == "red" or not policy.enabled:
+                    # Always ask: send to the permission tray.
+                    await _broadcast_permission_request(req)
+                else:
+                    # Auto-approve after a settle delay (prompt must still be open).
+                    loop.call_later(
+                        policy.settle_seconds,
+                        lambda i=idx, r=req, b=band, ru=rule:
+                            asyncio.ensure_future(_policy_auto_approve(i, r, b, ru)))
             elif prior_state == "awaiting_permission" and new_state != "awaiting_permission":
                 req = bus.close_permission(idx, reason="state_change")
                 if req:
@@ -550,6 +652,44 @@ async def _broadcast_handoff(source, target, instruction):
 async def _broadcast_permission_resolved(req_id, shell_idx, reason):
     msg = json.dumps({"type": "permission_resolved", "id": req_id,
                       "shell": shell_idx, "reason": reason, "ts": time.time()})
+    for ws in clients.copy():
+        try:
+            await ws.send(msg)
+        except (websockets.ConnectionClosed, ConnectionError):
+            clients.discard(ws)
+
+
+async def _policy_auto_approve(idx, req, band, rule):
+    """Auto-approve a green/amber permission prompt after the settle delay.
+
+    Bails out (and falls back to the tray) if the request was already
+    resolved, the pane left awaiting_permission, or the PTY write fails.
+    """
+    if bus is None:
+        return
+    cur = bus.permissions[idx] if 0 <= idx < bus.num_shells else None
+    if cur is None or cur.get("id") != req.get("id"):
+        return  # already resolved (state change or user action)
+    if bus.states[idx] != "awaiting_permission":
+        return
+    # Claude Code's permission dialog is a numbered menu ("1. Yes / 2. ... / 3. No")
+    # that ignores "y" -- send "1" for it, "y" only for legacy [y/n] prompts.
+    question = req.get("question", "")
+    key = b"y" if re.search(r'\[y/n\]|\(y/n\)', question, re.IGNORECASE) else b"1"
+    try:
+        os.write(masters[idx], key)
+    except (OSError, IndexError) as e:
+        print(f"  Policy: auto-approve write failed shell {idx}: {e}", flush=True)
+        await _broadcast_permission_request(req)  # fall back to asking
+        return
+    bus.close_permission(idx, reason=f"auto_{band}")
+    evt = {"type": "permission_auto", "id": req["id"], "shell": idx,
+           "band": band, "rule": rule,
+           "question": req.get("question", ""), "ts": time.time()}
+    bus._log(evt)
+    print(f"  Policy: shell {idx} auto-approved ({band}: {rule}) "
+          f"{req.get('question', '')[:60]}", flush=True)
+    msg = json.dumps(evt)
     for ws in clients.copy():
         try:
             await ws.send(msg)
@@ -709,12 +849,14 @@ async def handler(ws):
             await ws.send(json.dumps({"type": "permission_snapshot",
                                       "requests": bus.open_permissions()}))
             # Pane metadata (role/cwd/branch) for preset-driven sessions
+            _persisted_models = load_pane_models()
             meta_payload = [
                 {
                     "shell": i,
                     "role": (pane_meta[i].get("role") if i < len(pane_meta) else "") or "",
                     "cwd": (pane_meta[i].get("cwd") if i < len(pane_meta) else "") or "",
                     "branch": (pane_meta[i].get("branch") if i < len(pane_meta) else "") or "",
+                    "model": _persisted_models.get(str(i), ""),
                 }
                 for i in range(NUM_SHELLS)
             ]
@@ -758,6 +900,31 @@ async def handler(ws):
                         os.write(masters[idx], payload.encode())
                     except (OSError, IndexError) as e:
                         print(f"  Write error shell {idx}: {e}", flush=True)
+            elif msg_type == "set_model":
+                # Persist the pane's model choice AND apply it live via /model.
+                idx = data.get("shell")
+                alias = data.get("model", "")
+                if (idx is not None and 0 <= idx < NUM_SHELLS
+                        and alias in VALID_MODEL_ALIASES):
+                    save_pane_model(idx, alias)
+                    if idx < len(pane_meta):
+                        pane_meta[idx]["model"] = alias
+                    print(f"  Model: pane {idx} -> {alias} (persisted)", flush=True)
+                    try:
+                        os.write(masters[idx], (f"/model {alias}\r").encode())
+                    except (OSError, IndexError) as e:
+                        print(f"  set_model write error shell {idx}: {e}", flush=True)
+            elif msg_type == "set_fast":
+                # Toggle fast mode live by writing /fast into the pane's PTY.
+                # /fast is session state (no flag, no persistence), so we just
+                # forward the toggle; the UI mirrors on/off client-side.
+                idx = data.get("shell")
+                if idx is not None and 0 <= idx < NUM_SHELLS:
+                    print(f"  Fast: toggle pane {idx} (/fast)", flush=True)
+                    try:
+                        os.write(masters[idx], b"/fast\r")
+                    except (OSError, IndexError) as e:
+                        print(f"  set_fast write error shell {idx}: {e}", flush=True)
             elif msg_type == "upload":
                 idx = data.get("shell")
                 filename = data.get("filename", "file")
@@ -968,7 +1135,21 @@ async def handler(ws):
                 cols = max(10, min(500, int(cols)))
                 rows = max(5, min(200, int(rows)))
                 winsize = struct.pack("HHHH", rows, cols, 0, 0)
-                for fd in masters:
+                # Apply the winsize only to the pane that sent it. Each pane can
+                # have a different width (2x2 with a dragged gutter, off-by-one
+                # fit rounding), and the client sends one resize per pane with
+                # that pane's own cols/rows. Applying every message to all PTYs
+                # let the last-processed pane's width win for all four, so any
+                # pane with a different real width had a PTY that wrapped at the
+                # wrong column - Claude wraps input at the PTY width while xterm
+                # redraws at its own, and typed text jumbles/wraps back on itself.
+                shell = data.get("shell")
+                if shell is None or not (0 <= int(shell) < len(masters)):
+                    # No/invalid target (older client): fall back to all panes.
+                    targets = list(masters)
+                else:
+                    targets = [masters[int(shell)]]
+                for fd in targets:
                     try:
                         fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
                     except OSError:
@@ -1188,6 +1369,8 @@ def main():
     # Stagger spawns so the first pane completes OAuth token read/refresh
     # before the next starts. Avoids a refresh-token rotation race that
     # surfaces as "API error 401" on later panes.
+    persisted_models = load_pane_models()
+    resume_map = load_resume_next()
     for i in range(NUM_SHELLS):
         if i > 0:
             time.sleep(1.5)
@@ -1201,11 +1384,27 @@ def main():
             extra_args = []
         else:
             extra_args = ["--append-system-prompt", sys_prompt] if sys_prompt else []
-            # Fixed session id so the cost tracker can find this pane's JSONL
-            # deterministically (panes sharing a cwd are otherwise ambiguous).
-            sid = str(uuid.uuid4())
-            meta["session_id"] = sid
-            extra_args += ["--session-id", sid]
+            resume_sid = resume_map.get(str(i))
+            resume_cwd = find_session_cwd(resume_sid) if resume_sid else None
+            if resume_sid and resume_cwd:
+                # Restart continuity: resume the pane's previous conversation.
+                # Spawn in the session's original cwd: `claude --resume` only
+                # sees sessions belonging to the current directory's project.
+                meta["session_id"] = resume_sid
+                cwd = resume_cwd
+                extra_args += ["--resume", resume_sid]
+                print(f"  Pane {i + 1}: resuming session {resume_sid[:8]} (cwd {cwd})...", flush=True)
+            else:
+                # Fixed session id so the cost tracker can find this pane's JSONL
+                # deterministically (panes sharing a cwd are otherwise ambiguous).
+                sid = str(uuid.uuid4())
+                meta["session_id"] = sid
+                extra_args += ["--session-id", sid]
+            # Re-apply this pane's persisted model choice (survives restarts).
+            pane_model = persisted_models.get(str(i))
+            if pane_model and pane_model != "default":
+                extra_args += ["--model", pane_model]
+                meta["model"] = pane_model
         try:
             pid, master_fd = spawn_claude(spawn_path, i, cwd=cwd, extra_args=extra_args)
         except RuntimeError as e:

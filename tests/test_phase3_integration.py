@@ -59,6 +59,9 @@ def test_main_with_preset_creates_worktrees_and_passes_role_args(
     monkeypatch.setattr(qm_module, "port_is_free", lambda p: True)
     monkeypatch.setattr(qm_module.asyncio, "run", lambda *a, **kw: None)
     monkeypatch.setattr(qm_module.os, "kill", lambda *a, **kw: None)
+    # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
+    # models would otherwise inject --model args into the spawn calls.
+    monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -113,6 +116,9 @@ def test_main_without_preset_uses_default_shells(qm_module, monkeypatch):
     monkeypatch.setattr(qm_module, "port_is_free", lambda p: True)
     monkeypatch.setattr(qm_module.asyncio, "run", lambda *a, **kw: None)
     monkeypatch.setattr(qm_module.os, "kill", lambda *a, **kw: None)
+    # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
+    # models would otherwise inject --model args into the spawn calls.
+    monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -146,6 +152,9 @@ def test_no_worktrees_flag_runs_in_repo_cwd(qm_module, fresh_repo, monkeypatch):
     monkeypatch.setattr(qm_module, "port_is_free", lambda p: True)
     monkeypatch.setattr(qm_module.asyncio, "run", lambda *a, **kw: None)
     monkeypatch.setattr(qm_module.os, "kill", lambda *a, **kw: None)
+    # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
+    # models would otherwise inject --model args into the spawn calls.
+    monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -161,3 +170,40 @@ def test_no_worktrees_flag_runs_in_repo_cwd(qm_module, fresh_repo, monkeypatch):
     for c in calls:
         # All panes share the same repo cwd, no worktrees
         assert c["cwd"] == fresh_repo
+
+
+# --- Policy auto-approve key selection (5 Jul 2026) ---
+
+def _auto_approve_key(qm_module, monkeypatch, tmp_path, question):
+    """Run _policy_auto_approve against a pipe and return the byte it wrote."""
+    import asyncio
+    import status_bus as sb
+
+    monkeypatch.setattr(sb, "BUS_LOG", str(tmp_path / "bus.jsonl"))
+    bus = sb.StatusBus(1)
+    bus.states[0] = "awaiting_permission"
+    req = bus.open_permission(0, question)
+    req["band"] = "amber"
+    r, w = os.pipe()
+    try:
+        monkeypatch.setattr(qm_module, "bus", bus)
+        monkeypatch.setattr(qm_module, "masters", [w])
+        monkeypatch.setattr(qm_module, "clients", set())
+        asyncio.run(qm_module._policy_auto_approve(0, req, "amber", "default"))
+        return os.read(r, 8)
+    finally:
+        os.close(r)
+        os.close(w)
+
+
+def test_auto_approve_sends_1_for_numbered_menu(qm_module, monkeypatch, tmp_path):
+    # Claude Code's dialog is a numbered menu that ignores "y".
+    key = _auto_approve_key(qm_module, monkeypatch, tmp_path,
+                            "Do you want to proceed?")
+    assert key == b"1"
+
+
+def test_auto_approve_sends_y_for_legacy_yn_prompt(qm_module, monkeypatch, tmp_path):
+    key = _auto_approve_key(qm_module, monkeypatch, tmp_path,
+                            "Overwrite existing file? (y/n)")
+    assert key == b"y"
