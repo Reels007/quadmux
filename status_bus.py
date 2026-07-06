@@ -23,8 +23,23 @@ BUS_LOG_MAX_BYTES = 50 * 1024 * 1024  # 50 MB cap
 ANSI_RE = re.compile(r'\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-2AB]|[>=<78DEHM])')
 BOX_RE = re.compile(r'[─│┌┐└┘├┤┬┴┼╭╮╯╰▓░▒█]')
 
-SPINNER_CHARS = set("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-TOOL_RE = re.compile(r'●\s*(Read|Write|Edit|Bash|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite)\s*\(')
+# Claude Code 2.x animates the "working" status line through a set of sparkle
+# glyphs (NOT the old braille spinner) and always prints the ASCII string
+# "esc to interrupt" on that line the whole time it is thinking or running a
+# tool. The ASCII marker is the robust busy signal; the glyphs are a backup
+# for when it scrolls just out of the tail window.
+SPINNER_CHARS = set("✶✻✽✳✢✦")
+BUSY_RE = re.compile(r'esc to interrupt')
+# Tool activity markers. 2.x renders a tool call as a "⏺ <verb>" header
+# ("⏺ Read(…)", "⏺ Running 1 shell command…", "⏺ Update(…)") followed by a
+# "⎿" result/continuation line. The ⎿ marker is emitted for every tool and is
+# the most reliable signal; the verb-header list catches the moment the header
+# prints before the result line lands.
+TOOL_RE = re.compile(
+    r'⎿'
+    r'|⏺\s*(?:Read|Write|Edit|Bash|Running|Search|Fetch|Update|Create|Delete|'
+    r'List|Glob|Grep|Task|Web|Todo|Call|Wait|Add|Remove|Fetching|Searching)'
+)
 # Prose is NOT enough: the user's typed text and Claude's own replies echo
 # through the PTY and can contain "Do you want to proceed" or "1. Yes"
 # verbatim (e.g. a conversation ABOUT permission prompts). Only the selected
@@ -124,12 +139,24 @@ def detect_state(text: str, prior_state: str) -> str | None:
     # panes, so permissions get a wider window than the activity signals.
     if PERMISSION_RE.search(clean[-1200:]):
         return "awaiting_permission"
+
+    # Is Claude actively working? "esc to interrupt" (or a sparkle glyph in the
+    # live bottom region) is present the entire time it thinks or runs a tool,
+    # and vanishes the instant it returns to the prompt. Gating tool_running /
+    # thinking behind this is what stops a *completed* tool's "⎿" line, still
+    # sitting in the transcript at idle, from pinning the badge to a busy state.
+    busy = BUSY_RE.search(tail) is not None or any(c in tail[-200:] for c in SPINNER_CHARS)
+    if busy:
+        # Running a tool vs pure reasoning: a live tool call shows its header /
+        # "⎿" marker in the bottom region. Look only at the last ~300 chars so
+        # an earlier tool result higher up in this turn doesn't win over the
+        # current thinking frame.
+        if TOOL_RE.search(tail[-300:]):
+            return "tool_running"
+        return "thinking"
+
     if ERROR_RE.search(tail):
         return "errored"
-    if TOOL_RE.search(tail):
-        return "tool_running"
-    if any(c in tail for c in SPINNER_CHARS):
-        return "thinking"
     if PROMPT_TAIL_RE.search(tail.rstrip()):
         # Prompt visible. Only flip to idle from "thinking"/"tool_running" if
         # there's no spinner. Otherwise leave the prior state; tick() handles

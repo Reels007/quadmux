@@ -10,13 +10,26 @@ from status_bus import StatusBus, detect_state, extract_permission_question
 
 
 # --- detect_state ---
+#
+# Fixtures reflect Claude Code 2.x TUI output (captured from v2.1.201): the
+# "working" line animates through sparkle glyphs (✶✻✽✳✢) and always carries
+# the ASCII marker "esc to interrupt"; tool calls render a "⏺ <verb>" header
+# and a "⎿" result line. (Pre-2.x used braille "⠋" and a "● Tool(" header.)
+
+# A realistic "Claude is thinking" status line and a "tool executing" block.
+THINKING_LINE = "✻ Crafting… (12s · esc to interrupt · ← for agents)"
+TOOL_BLOCK = "⏺ Running 1 shell command…\n  ⎿  $ npm test\n(esc to interrupt)"
+
 
 def test_detect_thinking_from_spinner():
-    assert detect_state("⠋ Working...", "unknown") == "thinking"
+    assert detect_state(THINKING_LINE, "unknown") == "thinking"
+    # The ASCII "esc to interrupt" marker alone (glyph scrolled off) still counts.
+    assert detect_state("Pondering the request… esc to interrupt", "unknown") == "thinking"
 
 def test_detect_tool_running():
-    assert detect_state("● Read(/etc/hosts)", "unknown") == "tool_running"
-    assert detect_state("● Bash(npm test)", "idle") == "tool_running"
+    assert detect_state(TOOL_BLOCK, "unknown") == "tool_running"
+    assert detect_state("⏺ Read(/etc/hosts)\n  ⎿  read 40 lines\n(esc to interrupt)",
+                        "idle") == "tool_running"
 
 def test_detect_permission():
     assert detect_state("Do you want to proceed? (y/n)", "thinking") == "awaiting_permission"
@@ -35,7 +48,19 @@ def test_detect_no_change_returns_none():
 
 def test_ansi_codes_stripped():
     # Spinner inside ANSI escape should still trigger thinking
-    assert detect_state("\x1b[33m⠋\x1b[0m thinking", "unknown") == "thinking"
+    assert detect_state("\x1b[33m✻\x1b[0m Crafting… esc to interrupt", "unknown") == "thinking"
+
+def test_completed_tool_in_scrollback_at_idle_is_idle():
+    # A finished tool's "⎿" result line stays in the transcript above the
+    # prompt. With no live "esc to interrupt" it must NOT read as tool_running.
+    text = "⏺ Read(/etc/hosts)\n  ⎿  127.0.0.1 localhost\n\n⏺ Done.\n\n❯ "
+    assert detect_state(text, "tool_running") == "idle"
+
+def test_thinking_then_tool_then_thinking_sequence():
+    # Real turn shape: reason → run a tool → reason again.
+    assert detect_state(THINKING_LINE, "unknown") == "thinking"
+    assert detect_state(TOOL_BLOCK, "thinking") == "tool_running"
+    assert detect_state(THINKING_LINE, "tool_running") == "thinking"
 
 
 # --- StatusBus ---
@@ -48,10 +73,10 @@ def test_bus_initial_state():
 
 def test_bus_update_changes_state():
     bus = StatusBus(2)
-    assert bus.update(0, "⠋ working") == "thinking"
+    assert bus.update(0, "✻ Working… esc to interrupt") == "thinking"
     assert bus.states[0] == "thinking"
     # Same state: no change reported
-    assert bus.update(0, "⠙ still working") is None
+    assert bus.update(0, "✽ Working… esc to interrupt") is None
 
 def test_bus_update_invalid_shell():
     bus = StatusBus(2)
@@ -60,7 +85,7 @@ def test_bus_update_invalid_shell():
 
 def test_bus_tick_decays_to_idle():
     bus = StatusBus(1)
-    bus.update(0, "⠋ working")
+    bus.update(0, "✻ Working… esc to interrupt")
     # Force activity timestamp into the past and ensure a prompt was seen later
     bus.last_activity[0] = time.time() - 5.0
     bus.last_prompt_seen[0] = time.time()
@@ -71,7 +96,7 @@ def test_bus_tick_decays_to_idle():
 
 def test_bus_tick_does_not_decay_without_prompt():
     bus = StatusBus(1)
-    bus.update(0, "⠋ working")
+    bus.update(0, "✻ Working… esc to interrupt")
     bus.last_activity[0] = time.time() - 5.0
     # No prompt seen recently
     changes = bus.tick()
@@ -129,7 +154,7 @@ def test_bus_log_appended(tmp_path, monkeypatch):
     log = tmp_path / "bus.jsonl"
     monkeypatch.setattr(status_bus, "BUS_LOG", str(log))
     bus = StatusBus(1)
-    bus.update(0, "⠋ working")
+    bus.update(0, "✻ Working… esc to interrupt")
     bus.open_permission(0, "test?")
     bus.close_permission(0, reason="allow")
     contents = log.read_text().strip().split("\n")
@@ -232,7 +257,7 @@ def test_resolve_dialog_with_no_open_request_still_resets_state():
 
 def test_resolve_dialog_leaves_other_states_alone():
     bus = StatusBus(1)
-    bus.update(0, "⠋ Working...")
+    bus.update(0, "✻ Working… esc to interrupt")
     closed, new_state = bus.resolve_dialog(0, reason="pane_input")
     assert closed is None
     assert new_state is None
