@@ -26,6 +26,7 @@ FILES=(
   activity_log.py
   costs.py
   parked.py
+  policy.py
   presets.py
   sessions.py
   status_bus.py
@@ -89,8 +90,14 @@ if [ "${1:-}" = "--restart" ]; then
     echo "  no server was running on $PORT"
   fi
   nohup python3 "$DEST_DIR/quadmux-server.py" --port "$PORT" >"$DEST_DIR/server.log" 2>&1 &
-  sleep 1
-  newpid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  # Startup staggers pane spawns 1.5s apart, so the port can take several
+  # seconds to open; poll up to 15s instead of checking once.
+  newpid=""
+  for _ in $(seq 1 30); do
+    newpid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+    [ -n "$newpid" ] && break
+    sleep 0.5
+  done
   if [ -n "$newpid" ]; then
     echo "  started server (pid $newpid), log: $DEST_DIR/server.log"
   else
