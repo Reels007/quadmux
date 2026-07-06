@@ -25,9 +25,17 @@ BOX_RE = re.compile(r'[─│┌┐└┘├┤┬┴┼╭╮╯╰▓░▒█
 
 SPINNER_CHARS = set("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 TOOL_RE = re.compile(r'●\s*(Read|Write|Edit|Bash|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite)\s*\(')
+# Prose is NOT enough: the user's typed text and Claude's own replies echo
+# through the PTY and can contain "Do you want to proceed" or "1. Yes"
+# verbatim (e.g. a conversation ABOUT permission prompts). Only the selected
+# menu row a real dialog renders ("❯ 1. Yes") or a y/n marker counts.
 PERMISSION_RE = re.compile(
-    r'(Do you want to|\[y/n\]|\(y/n\)|\bAllow\b.*\bDeny\b|❯.*\b1\.\s*Yes\b)',
-    re.IGNORECASE,
+    r'(❯\s*1\.\s*Yes\b'
+    # y/n markers only count at end of line (a real prompt awaits input there);
+    # "(y/n)" quoted mid-sentence in chat prose must not match.
+    r'|[\[\(]y/n[\]\)]\s*[:>]?\s*$'
+    r'|\bAllow\b.{0,120}?\bDeny\b)',
+    re.IGNORECASE | re.DOTALL | re.MULTILINE,
 )
 ERROR_RE = re.compile(r'(?:^|\s)(Error:|Traceback|✗\s|failed:)', re.IGNORECASE)
 PROMPT_TAIL_RE = re.compile(r'[❯>]\s*$')
@@ -44,9 +52,15 @@ def extract_permission_question(text: str) -> str:
         3. lines containing '[y/n]' / '(y/n)'
     Returns up to ~140 chars, or '' if nothing usable.
     """
-    clean = BOX_RE.sub(' ', ANSI_RE.sub('', text))
-    lines = [ln.strip() for ln in clean.split('\n') if ln.strip()]
-    tail = lines[-30:]
+    # Replace ANSI with a space (not ''): cursor-positioning sequences often
+    # stand in for the whitespace between words, so bare stripping glues words
+    # together ("fromthetargetdirectory").
+    clean = BOX_RE.sub(' ', ANSI_RE.sub(' ', text))
+    # Terminal redraws interleave \r segments mid-line; treat them as line
+    # breaks so fragments don't concatenate into garbage.
+    clean = clean.replace('\r', '\n')
+    lines = [re.sub(r'[ \t]{2,}', ' ', ln.strip()) for ln in clean.split('\n')]
+    tail = [ln for ln in lines if ln][-30:]
 
     for ln in reversed(tail):
         if 'do you want' in ln.lower():
@@ -60,6 +74,21 @@ def extract_permission_question(text: str) -> str:
         if '[y/n]' in low or '(y/n)' in low:
             return ln[:140]
     return ''
+
+
+def extract_dialog_block(text: str) -> str:
+    """Return just the permission dialog block from raw PTY output.
+
+    Claude Code draws the dialog as the last rounded box on screen (tool name,
+    command, question, options). Classifying only this block stops red/green
+    patterns matching stray conversation text in the scrollback (e.g. "send
+    the email" in chat prose forcing every prompt into the red band).
+    """
+    clean = ANSI_RE.sub(' ', text).replace('\r', '\n')
+    start = clean.rfind('╭')
+    block = clean[start:] if start != -1 else clean[-800:]
+    block = BOX_RE.sub(' ', block)
+    return re.sub(r'[ \t]{2,}', ' ', block)[:1200]
 
 
 def _clean(text: str) -> str:

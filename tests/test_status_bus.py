@@ -138,3 +138,69 @@ def test_bus_log_appended(tmp_path, monkeypatch):
     assert any('"to": "thinking"' in t for t in types)
     assert any('"permission_request"' in t for t in types)
     assert any('"permission_resolved"' in t for t in types)
+
+
+# --- Permission detection hardening (5 Jul 2026) ---
+
+NUMBERED_DIALOG = (
+    "╭─ Bash command ─────────────╮\n"
+    "│ git status                 │\n"
+    "╰────────────────────────────╯\n"
+    "Do you want to proceed?\n"
+    "❯ 1. Yes\n"
+    "  2. Yes, and don't ask again for git status\n"
+    "  3. No, and tell Claude what to do differently\n"
+)
+
+def test_detect_permission_numbered_menu():
+    assert detect_state(NUMBERED_DIALOG, "tool_running") == "awaiting_permission"
+
+def test_detect_trust_prompt():
+    text = "Do you trust the files in this folder?\n❯ 1. Yes, proceed\n  2. No, exit\n"
+    assert detect_state(text, "unknown") == "awaiting_permission"
+
+def test_echoed_user_text_is_not_permission():
+    # The user's own typed message echoes through the PTY; a bare
+    # "do you want to proceed" phrase must not open a permission request.
+    text = '❯ why am i getting "do you want to proceed" messages in the new quadmux?\n'
+    assert detect_state(text, "idle") != "awaiting_permission"
+
+def test_extract_question_keeps_spaces_across_ansi_positioning():
+    # Cursor-positioning sequences stand in for whitespace; stripping them to
+    # '' used to produce "fromthetargetdirectory.Approveonlyifyoutrustit."
+    text = ("Approve\x1b[5;18Honly\x1b[5;23Hif\x1b[5;26Hyou"
+            "\x1b[5;30Htrust\x1b[5;36Hit.")
+    q = extract_permission_question(text)
+    assert q == "Approve only if you trust it."
+
+def test_dialog_block_excludes_scrollback():
+    from status_bus import extract_dialog_block
+    raw = ("I will send the email to the investor after you approve.\n"
+           "╭─ Bash command ─╮\n│ ls -la ~/Desktop │\n╰─╯\n"
+           "Do you want to proceed?\n❯ 1. Yes\n")
+    block = extract_dialog_block(raw)
+    assert "send the email" not in block
+    assert "ls -la" in block
+
+def test_dialog_block_falls_back_without_box():
+    from status_bus import extract_dialog_block
+    block = extract_dialog_block("Do you want to proceed? (y/n)")
+    assert "proceed" in block
+
+def test_prose_about_permission_dialogs_is_not_permission():
+    # Chat replies ABOUT the permission system echo phrases like
+    # "Do you want to proceed" and "1. Yes" without being a dialog.
+    text = ('Detector requires the actual menu ("Do you want/trust" + "1. Yes",\n'
+            'or a y/n marker to co-occur) before opening a request.\n')
+    assert detect_state(text, "idle") != "awaiting_permission"
+
+def test_quoted_yn_mid_sentence_is_not_permission():
+    # "(y/n)" quoted inside chat prose is not a prompt; only a y/n marker
+    # at end of line (where a real prompt awaits input) counts.
+    text = ('Note: legacy prompts end with (y/n) instead of a menu.\n'
+            '\n❯ \n? for shortcuts\n')
+    assert detect_state(text, "idle") != "awaiting_permission"
+
+def test_yn_at_line_end_is_permission():
+    assert detect_state("Overwrite existing file? [y/n]: ", "tool_running") == "awaiting_permission"
+    assert detect_state("Continue? (y/n)\n", "idle") == "awaiting_permission"
