@@ -717,6 +717,38 @@ body {
   }
   .shell-cost[data-empty="1"] { opacity: 0.4; }
 
+  /* Context meter: how full this pane's Claude context window is. Track and
+     fill colours are theme-neutral so one rule serves light and dark. */
+  .shell-ctx {
+    position: relative;
+    flex: 0 0 auto;
+    width: 46px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.4);
+    overflow: hidden;
+    user-select: none;
+  }
+  .shell-ctx-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: 3px;
+    background: #38bdf8;
+    transition: width 0.4s ease, background 0.4s ease;
+  }
+  .shell-ctx[data-level="warn"] .shell-ctx-fill { background: #f59e0b; }
+  .shell-ctx[data-level="high"] .shell-ctx-fill { background: #f87171; }
+  .shell-ctx[data-empty="1"] { opacity: 0.35; }
+  .shell-ctx-pct {
+    font-size: 9px;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .shell-ctx-pct[data-empty="1"] { opacity: 0.4; }
+  body:not(.theme-light) .shell-ctx-pct { color: #94a3b8; }
+
   .global-cost {
     position: fixed;
     bottom: 12px;
@@ -1202,11 +1234,12 @@ body {
   /* Responsive pane headers: shed non-essential controls as panes narrow.
      Essentials always keep: number, title, project chip, state, handoff, park, health. */
   @container (max-width: 560px) {
-    .shell-cost, .shell-timer, .btn-voice { display: none; }
+    .shell-cost, .shell-timer, .btn-voice, .shell-ctx-pct { display: none; }
     .shell-title { max-width: 110px; }
   }
   @container (max-width: 430px) {
     .btn-fast, .shell-model { display: none; }  /* model switch still in Cmd+K */
+    .shell-ctx { width: 28px; }  /* bar stays: it is the point of the header */
     .shell-title { max-width: 80px; }
   }
 
@@ -2445,6 +2478,8 @@ body {
           <option value="opusplan">Opus plan</option>
         </select>
         <button class="btn-fast" data-shell="0" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
+        <span class="shell-ctx" id="ctx-0" data-empty="1" data-level="ok" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pane 1 context used" title="Pane 1 context used"><span class="shell-ctx-fill"></span></span>
+        <span class="shell-ctx-pct" id="ctx-pct-0" data-empty="1">--</span>
         <span class="shell-cost" id="cost-0" data-empty="1" title="Pane 1 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
@@ -2481,6 +2516,8 @@ body {
           <option value="opusplan">Opus plan</option>
         </select>
         <button class="btn-fast" data-shell="1" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
+        <span class="shell-ctx" id="ctx-1" data-empty="1" data-level="ok" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pane 2 context used" title="Pane 2 context used"><span class="shell-ctx-fill"></span></span>
+        <span class="shell-ctx-pct" id="ctx-pct-1" data-empty="1">--</span>
         <span class="shell-cost" id="cost-1" data-empty="1" title="Pane 2 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
@@ -2517,6 +2554,8 @@ body {
           <option value="opusplan">Opus plan</option>
         </select>
         <button class="btn-fast" data-shell="2" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
+        <span class="shell-ctx" id="ctx-2" data-empty="1" data-level="ok" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pane 3 context used" title="Pane 3 context used"><span class="shell-ctx-fill"></span></span>
+        <span class="shell-ctx-pct" id="ctx-pct-2" data-empty="1">--</span>
         <span class="shell-cost" id="cost-2" data-empty="1" title="Pane 3 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
@@ -2551,6 +2590,8 @@ body {
           <option value="opusplan">Opus plan</option>
         </select>
         <button class="btn-fast" data-shell="3" title="Fast mode: Opus with faster output (toggles /fast)" aria-label="Fast mode" aria-pressed="false">&#x26A1;</button>
+        <span class="shell-ctx" id="ctx-3" data-empty="1" data-level="ok" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pane 4 context used" title="Pane 4 context used"><span class="shell-ctx-fill"></span></span>
+        <span class="shell-ctx-pct" id="ctx-pct-3" data-empty="1">--</span>
         <span class="shell-cost" id="cost-3" data-empty="1" title="Pane 4 tokens · cost">0 tok</span>
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
@@ -3209,6 +3250,34 @@ function formatTokens(n) {
   if (n >= 1_000) return Math.round(n / 1_000) + 'k';
   return String(n);
 }
+// Context meter thresholds (percent of the window used).
+const CTX_WARN_PCT = 60;
+const CTX_HIGH_PCT = 85;
+
+function applyContextMeter(p) {
+  const bar = document.getElementById(`ctx-${p.shell}`);
+  if (!bar) return;
+  const fill = bar.querySelector('.shell-ctx-fill');
+  const pctEl = document.getElementById(`ctx-pct-${p.shell}`);
+  const used = p.context_tokens || 0;
+  const limit = p.context_limit || 200000;
+  const pct = Math.max(0, Math.min(100,
+    typeof p.context_pct === 'number' ? p.context_pct : (100 * used / limit)));
+  const empty = used === 0 ? '1' : '0';
+  if (fill) fill.style.width = pct.toFixed(1) + '%';
+  bar.dataset.empty = empty;
+  bar.dataset.level = pct >= CTX_HIGH_PCT ? 'high' : pct >= CTX_WARN_PCT ? 'warn' : 'ok';
+  bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+  if (pctEl) {
+    pctEl.textContent = used === 0 ? '--' : Math.round(pct) + '%';
+    pctEl.dataset.empty = empty;
+  }
+  bar.title = used === 0
+    ? `Pane ${p.shell + 1}: context unknown until Claude replies`
+    : `Pane ${p.shell + 1}: ${formatTokens(used)} of ${formatTokens(limit)} context used `
+      + `(${Math.round(pct)}%) as of the last reply`;
+}
+
 function applyCostSnapshot(snap) {
   const panes = snap.panes || [];
   panes.forEach(p => {
@@ -3218,6 +3287,7 @@ function applyCostSnapshot(snap) {
     const cost = p.cost || 0;
     el.textContent = `${formatTokens(tok)} tok · $${cost.toFixed(2)}`;
     el.dataset.empty = tok === 0 ? '1' : '0';
+    applyContextMeter(p);
     applyTaskTitle(p);
     syncPaneModelSelect(p.shell, p.model);
     if (!p.has_session) {
@@ -5038,7 +5108,9 @@ function qmMissionRender() {
     const state = document.getElementById(`state-${i}`)?.textContent || '';
     const model = document.querySelector(`.shell-model[data-shell="${i}"]`)?.value || '';
     const cost = document.getElementById(`cost-${i}`)?.textContent || '';
-    meta.textContent = [state, model, cost].filter(Boolean).join(' | ');
+    const ctxEl = document.getElementById(`ctx-pct-${i}`);
+    const ctx = ctxEl && ctxEl.dataset.empty !== '1' ? `ctx ${ctxEl.textContent}` : '';
+    meta.textContent = [state, model, ctx, cost].filter(Boolean).join(' | ');
     row.append(num, grow, meta);
     row.addEventListener('click', () => {
       qmMissionClose();

@@ -720,7 +720,9 @@ def _cost_snapshot_payload():
         snap = t.snapshot() if t else {"tokens": {"input": 0, "output": 0,
                                                    "cache_read": 0, "cache_write": 0},
                                        "total_tokens": 0, "cost": 0.0, "model": "",
-                                       "task": ""}
+                                       "task": "", "context_tokens": 0,
+                                       "context_limit": costs_mod.context_limit_for(""),
+                                       "context_pct": 0.0}
         panes.append({"shell": i, **snap,
                       "has_session": bool(t and t.path)})
         total_tokens += snap["total_tokens"]

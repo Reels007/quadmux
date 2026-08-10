@@ -203,3 +203,90 @@ def test_task_truncated_to_title_length(tmp_path):
     t.poll()
     assert len(t.task) <= costs.TASK_MAX_CHARS
     assert t.task.endswith("...")
+
+
+def _assistant(input_t, cache_read=0, cache_write=0, output=0, sidechain=False):
+    line = {"type": "assistant",
+            "message": {"model": "claude-opus-5",
+                        "usage": {"input_tokens": input_t,
+                                  "cache_read_input_tokens": cache_read,
+                                  "cache_creation_input_tokens": cache_write,
+                                  "output_tokens": output}}}
+    if sidechain:
+        line["isSidechain"] = True
+    return json.dumps(line)
+
+
+def test_context_used_sums_the_input_side():
+    assert costs.context_used({"input_tokens": 2, "cache_read_input_tokens": 67190,
+                               "cache_creation_input_tokens": 2756,
+                               "output_tokens": 102}) == 69948
+
+
+def test_context_limit_env_override(monkeypatch):
+    assert costs.context_limit_for("claude-opus-5") == costs.DEFAULT_CONTEXT_LIMIT
+    monkeypatch.setenv("QM_CONTEXT_LIMIT", "1000000")
+    assert costs.context_limit_for("claude-opus-5") == 1_000_000
+    monkeypatch.setenv("QM_CONTEXT_LIMIT", "nonsense")
+    assert costs.context_limit_for("claude-opus-5") == costs.DEFAULT_CONTEXT_LIMIT
+
+
+def test_context_tracks_latest_reply_not_a_running_total(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text("\n".join([
+        _assistant(10, cache_read=40_000),
+        _assistant(10, cache_read=90_000),
+    ]) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    snap = t.snapshot()
+    assert snap["context_tokens"] == 90_010
+    assert snap["context_limit"] == costs.DEFAULT_CONTEXT_LIMIT
+    assert snap["context_pct"] == pytest.approx(45.0, abs=0.1)
+    # Cumulative token totals keep counting both replies.
+    assert snap["tokens"]["cache_read"] == 130_000
+
+
+def test_context_falls_back_after_compaction(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(_assistant(10, cache_read=180_000) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    assert t.snapshot()["context_tokens"] == 180_010
+    with open(f, "a") as fh:
+        fh.write(_assistant(10, cache_read=12_000) + "\n")
+    t.poll()
+    assert t.snapshot()["context_tokens"] == 12_010
+
+
+def test_context_ignores_subagent_replies(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text("\n".join([
+        _assistant(10, cache_read=50_000),
+        _assistant(10, cache_read=150_000, sidechain=True),
+    ]) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    assert t.snapshot()["context_tokens"] == 50_010
+
+
+def test_context_resets_on_attach(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(_assistant(10, cache_read=50_000) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    assert t.context_tokens
+    other = tmp_path / "s2.jsonl"
+    other.write_text("")
+    t.attach(str(other))
+    snap = t.snapshot()
+    assert snap["context_tokens"] == 0
+    assert snap["context_pct"] == 0.0
+
+
+def test_context_zero_when_no_session(tmp_path):
+    t = costs.CostTracker(None)
+    snap = t.snapshot()
+    assert snap["context_tokens"] == 0
+    assert snap["context_pct"] == 0.0
+    assert snap["context_limit"] > 0

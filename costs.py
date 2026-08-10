@@ -152,6 +152,34 @@ def assign_session_files(pane_cwds: List[str]) -> List[Optional[str]]:
     return out
 
 
+# Context window every Claude Code pane runs with. All current families are
+# 200k by default (the 1M Sonnet window needs an explicit beta variant Claude
+# Code doesn't use), so one number covers every pane; override for a pane set
+# running something else with QM_CONTEXT_LIMIT.
+DEFAULT_CONTEXT_LIMIT = 200_000
+
+
+def context_limit_for(model: str) -> int:
+    """Context window size in tokens for ``model``."""
+    try:
+        override = int(os.environ.get("QM_CONTEXT_LIMIT", "") or 0)
+    except ValueError:
+        override = 0
+    return override if override > 0 else DEFAULT_CONTEXT_LIMIT
+
+
+def context_used(usage: dict) -> int:
+    """Prompt size of one assistant message: everything on the input side.
+
+    This is what the pane's context meter reports. It excludes the message's
+    own output tokens, which only enter the context on the next turn, so the
+    figure lags a live reply by one turn.
+    """
+    return ((usage.get("input_tokens", 0) or 0)
+            + (usage.get("cache_read_input_tokens", 0) or 0)
+            + (usage.get("cache_creation_input_tokens", 0) or 0))
+
+
 TASK_MAX_CHARS = 48
 
 
@@ -198,6 +226,9 @@ class CostTracker:
         self.cost = 0.0
         self.last_update = 0.0
         self.task = ""
+        # Prompt size of the newest main-thread reply, not a running total:
+        # it falls back down after a /compact or /clear.
+        self.context_tokens = 0
 
     def attach(self, path: str):
         self.path = path
@@ -206,6 +237,7 @@ class CostTracker:
         self.cost = 0.0
         self.last_model = ""
         self.task = ""
+        self.context_tokens = 0
 
     def poll(self) -> bool:
         """Read any new bytes appended to ``self.path``. Returns True if totals changed."""
@@ -248,6 +280,12 @@ class CostTracker:
                 continue
             model = (msg.get("model") if isinstance(msg, dict) else "") or self.last_model
             self.last_model = model or self.last_model
+            # Context meter tracks the main thread only: subagent replies
+            # (isSidechain) carry their own separate context.
+            if obj.get("type") == "assistant" and not obj.get("isSidechain"):
+                ctx = context_used(usage)
+                if ctx:
+                    self.context_tokens = ctx
             self.tokens["input"]       += usage.get("input_tokens", 0) or 0
             self.tokens["output"]      += usage.get("output_tokens", 0) or 0
             self.tokens["cache_read"]  += usage.get("cache_read_input_tokens", 0) or 0
@@ -263,10 +301,14 @@ class CostTracker:
         return changed
 
     def snapshot(self) -> dict:
+        limit = context_limit_for(self.last_model)
         return {
             "tokens": dict(self.tokens),
             "total_tokens": sum(self.tokens.values()),
             "cost": round(self.cost, 4),
             "model": self.last_model,
             "task": self.task,
+            "context_tokens": self.context_tokens,
+            "context_limit": limit,
+            "context_pct": round(100.0 * self.context_tokens / limit, 1) if limit else 0.0,
         }
