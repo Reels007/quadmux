@@ -38,6 +38,48 @@ def _safe_upload_path(filename: str) -> str:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     return os.path.join(UPLOAD_DIR, f"{int(time.time())}_{uuid.uuid4().hex[:6]}_{base}")
 
+
+# --- open-path (click a file path in a pane to open it on the Mac) ---------
+# The client linkifies filesystem paths and sends {"type":"open_path","path":...}.
+# A browser page cannot open local files, so the server does it (localhost only).
+# Guarded: must be an existing absolute path under an allowed root.
+_OPEN_ROOTS_CACHE = None
+def _open_roots():
+    global _OPEN_ROOTS_CACHE
+    if _OPEN_ROOTS_CACHE is None:
+        home = os.path.realpath(os.path.expanduser("~"))
+        _OPEN_ROOTS_CACHE = [home, "/tmp", "/private/tmp", "/private/var/folders", "/Volumes"]
+    return _OPEN_ROOTS_CACHE
+
+def resolve_open_path(raw: str):
+    """Return (ok, resolved_realpath, error). Rejects anything not an existing
+    absolute path under an allowed root."""
+    if not isinstance(raw, str) or not raw.strip():
+        return False, "", "empty path"
+    p = raw.strip().strip('"\'`')
+    p = os.path.expanduser(p)
+    if not os.path.isabs(p):
+        return False, "", "not an absolute path"
+    real = os.path.realpath(p)
+    if not os.path.exists(real):
+        return False, "", "not found"
+    roots = _open_roots()
+    if not any(real == r or real.startswith(r + os.sep) for r in roots):
+        return False, "", "outside allowed roots"
+    return True, real, ""
+
+def launch_open(path: str):
+    """Hand the file to the Mac's default handler (like double-clicking in Finder).
+    `open` renders STL/3D in Preview and everything else in its default app. To use
+    spacebar-style Quick Look for 3D/images instead, swap in ['qlmanage','-p',path]
+    for the extensions in QUICKLOOK_EXTS below."""
+    subprocess.Popen(["open", path],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+QUICKLOOK_EXTS = {".stl", ".obj", ".3mf", ".step", ".stp", ".ply", ".gltf", ".glb",
+                  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".heic", ".tif", ".tiff",
+                  ".pdf", ".svg", ".dxf"}
+
 # Unique per-server-process token. Embedded in HTML and sent in WebSocket hello
 # so any browser tab from a previous server process force-reloads instead of
 # silently running stale JavaScript.
@@ -60,13 +102,16 @@ import parked as parked_mod
 import costs as costs_mod
 import activity_log as activity_mod
 import sessions as sessions_mod
+import account_check as account_mod
 
 masters = []
 child_pids = []
 clients = set()
 loop = None
 shell_buffers = []
-_save_lock = threading.Lock()
+# Reentrant: a SIGTERM handler can fire while autosave_loop is mid-save on this
+# same thread, and graceful_shutdown saves again. A plain Lock deadlocks there.
+_save_lock = threading.RLock()
 MAX_BUFFER = 200
 NUM_SHELLS = 4
 bus = None  # initialised in main() once NUM_SHELLS is final
@@ -89,6 +134,72 @@ def load_resume_next():
     except (OSError, json.JSONDecodeError):
         pass
     return {}
+
+
+def write_resume_next():
+    """Record pane index -> session id so the next start resumes these panes.
+
+    Called from the shutdown path. The four `claude` CLIs are children of this
+    server on PTYs it owns, so killing the server kills them too; without this
+    handoff the replacement server cold-starts every pane and the work looks
+    wiped (the conversations are still on disk, just detached). Panes with no
+    session id (fallback CLIs like gemini, which reject --session-id) are
+    skipped, and no file is written if that leaves nothing to resume.
+    """
+    def live_sid(i, meta):
+        # The spawn-time session id goes stale the moment the pane's
+        # conversation forks (--resume) or rolls (/clear); the cost tracker
+        # follows those, so its chain tip is the conversation actually on
+        # screen. Only trust a chain that started from this pane's own sid,
+        # so a fallback-attached tracker can't hijack the resume.
+        sid = meta.get("session_id")
+        if i < len(cost_trackers) and cost_trackers[i]:
+            chain = cost_trackers[i].session_ids
+            if chain and chain[0] == sid:
+                return chain[-1]
+        return sid
+
+    mapping = {str(i): live_sid(i, meta)
+               for i, meta in enumerate(pane_meta) if meta.get("session_id")}
+    if not mapping:
+        return
+    tmp = RESUME_NEXT_PATH + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(RESUME_NEXT_PATH), exist_ok=True)
+        with open(tmp, "w") as f:
+            json.dump(mapping, f, indent=2)
+        os.replace(tmp, RESUME_NEXT_PATH)
+        print(f"  Resume map saved for {len(mapping)} pane(s)", flush=True)
+    except (OSError, TypeError) as e:
+        print(f"  Resume map write failed: {e}", flush=True)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def install_shutdown_handlers(shutdown_fn):
+    """Run ``shutdown_fn`` on SIGTERM/SIGHUP, then exit.
+
+    `deploy.sh --restart` and any plain `kill` send SIGTERM. Only
+    KeyboardInterrupt used to reach graceful_shutdown, so those signals killed
+    the server outright: no session save, no child reap, no resume map, and
+    all four panes came back empty. os._exit is deliberate - the handler runs
+    after cleanup has already closed the FDs and reaped the children, and
+    raising SystemExit from a signal handler inside asyncio.run is unreliable.
+    """
+    def _handle(signum, _frame):
+        print(f"\nSignal {signum}: shutting down... saving session", flush=True)
+        try:
+            shutdown_fn()
+        finally:
+            os._exit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, _handle)
+        except (ValueError, OSError):
+            pass  # not the main thread, or signal unsupported on this platform
 
 
 def find_session_cwd(sid: str):
@@ -128,7 +239,13 @@ BUS_TICK_INTERVAL = 1.0
 # Per-pane model persistence. Each pane's chosen model alias survives restarts
 # by being re-applied as a `--model` arg at spawn. Keyed by pane index (str).
 PANE_MODELS_PATH = os.path.expanduser("~/.quadmux/pane_models.json")
-VALID_MODEL_ALIASES = {"opus", "sonnet", "haiku", "fable", "opusplan", "default"}
+# Values accepted by both `claude --model X` and the in-session `/model X`.
+# Opus is pinned to full model ids: the bare `opus` alias tracks the latest Opus
+# build, so it can't be labelled with a version. It stays accepted here for
+# back-compat with pane_models.json files written before the pinned ids landed.
+# Note `opus5` is NOT valid - the CLI only accepts the full `claude-opus-5`.
+VALID_MODEL_ALIASES = {"claude-opus-5", "claude-opus-4-8", "opus",
+                       "sonnet", "haiku", "fable", "opusplan", "default"}
 
 
 def load_pane_models():
@@ -167,6 +284,8 @@ worktree_session_id = None  # for prune-on-shutdown
 
 # Phase 5: per-pane cost trackers
 cost_trackers = []  # list of costs_mod.CostTracker
+last_input_time = []  # wall time of last keyboard input per pane (rebind disambiguation)
+known_session_files = set()  # session JSONLs already judged by find_rebinds()
 COST_POLL_INTERVAL = 5.0  # seconds
 SESSION_LOOKUP_RETRY_INTERVAL = 8.0  # seconds before re-scanning for missing session files
 SESSION_DIR = os.path.join(os.path.expanduser("~"), ".quadmux", "sessions")
@@ -423,6 +542,15 @@ def spawn_claude(claude_path, idx, rows=24, cols=80, cwd=None, extra_args=None):
                 path = extra + ":" + path
         os.environ["PATH"] = path
         os.environ.pop("ANTHROPIC_API_KEY", None)
+        # Drop the launching Claude session's identity markers. If the server was
+        # started from inside a Claude Code session these are inherited, and the
+        # CHILD_SESSION marker makes each pane disable transcript saving ("⚠
+        # Transcript saving is off - inherited CLAUDE_CODE_CHILD_SESSION marker").
+        # No JSONL means no cost tracking: costs.session_file_for_id() returns
+        # None for every pane. The stale SESSION_ID/PID point at a process that
+        # is usually already dead, so hooks reading them get wrong answers too.
+        for stale in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID"):
+            os.environ.pop(stale, None)
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
         if cwd:
@@ -743,13 +871,24 @@ async def _broadcast_cost():
 async def cost_poll_loop():
     """Poll each pane's session JSONL for new usage events."""
     last_lookup = 0.0
+    last_rebind = 0.0
     while True:
         await asyncio.sleep(COST_POLL_INTERVAL)
         if not cost_trackers:
             continue
+        now = time.time()
+        # A pane's conversation regularly outlives its spawn-time JSONL:
+        # --resume forks it and /clear rolls it. Follow it, or the meters
+        # freeze on dead files.
+        if now - last_rebind >= SESSION_LOOKUP_RETRY_INTERVAL:
+            last_rebind = now
+            for i, p, from_end in costs_mod.find_rebinds(
+                    cost_trackers, last_input_time, known_session_files, now=now):
+                cost_trackers[i].attach(p, from_end=from_end, keep_totals=True)
+                print(f"  Cost: pane {i+1} re-attached to {p} "
+                      f"({'resume fork' if from_end else '/clear'})", flush=True)
         # If any pane lacks a session file yet, retry the lookup periodically.
         if any(t and not t.path for t in cost_trackers):
-            now = time.time()
             if now - last_lookup >= SESSION_LOOKUP_RETRY_INTERVAL:
                 last_lookup = now
                 # Panes spawned without a preset inherit the server's cwd.
@@ -809,6 +948,15 @@ async def http_handler(connection, request):
 
     from websockets.http11 import Response
     from websockets.datastructures import Headers
+
+    # Which Claude account every pane is running as. Read fresh per request so a
+    # /login in a pane shows up on the next page load without a restart.
+    if getattr(request, "path", "") == "/api/account":
+        body = json.dumps(account_mod.summary()).encode()
+        return Response(200, "OK", Headers([
+            ("Content-Type", "application/json"),
+            ("Cache-Control", "no-store"),
+        ]), body)
 
     try:
         from voice_routes import dispatch
@@ -896,6 +1044,8 @@ async def handler(ws):
                 text = data.get("text", "")
                 raw = data.get("raw", False)
                 if idx is not None and 0 <= idx < NUM_SHELLS:
+                    if idx < len(last_input_time):
+                        last_input_time[idx] = time.time()
                     # If this shell has voice active, start capturing response
                     if idx == voice_shell and not raw:
                         voice_capturing[idx] = True
@@ -1157,6 +1307,22 @@ async def handler(ws):
             elif msg_type == "save_session":
                 save_session()
                 await ws.send(json.dumps({"type": "session_saved", "time": time.time()}))
+            elif msg_type == "open_path":
+                idx = data.get("shell")
+                raw_path = data.get("path", "")
+                ok, resolved, err = resolve_open_path(raw_path)
+                if not ok:
+                    await ws.send(json.dumps({"type": "open_path_error", "shell": idx,
+                                              "path": raw_path, "error": err}))
+                else:
+                    try:
+                        launch_open(resolved)
+                        print(f"  Open path shell {idx}: {resolved}", flush=True)
+                        await ws.send(json.dumps({"type": "open_path_done", "shell": idx,
+                                                  "path": resolved}))
+                    except Exception as e:
+                        await ws.send(json.dumps({"type": "open_path_error", "shell": idx,
+                                                  "path": resolved, "error": str(e)}))
             elif msg_type == "resize":
                 cols = data.get("cols", 80)
                 rows = data.get("rows", 24)
@@ -1205,7 +1371,11 @@ async def serve(port):
 
 
 def graceful_shutdown():
-    """Clean shutdown: save session, terminate children, close FDs, reap zombies."""
+    """Clean shutdown: hand off panes, save session, terminate children, close
+    FDs, reap zombies."""
+    # First, and before anything that can block: the pane -> session handoff is
+    # what lets the next server resume these conversations instead of wiping them.
+    write_resume_next()
     save_session()
     # Mark this session's archive as ended.
     if session_dir:
@@ -1355,8 +1525,9 @@ def main():
 
     # Phase 5: initialise per-pane cost trackers. Session files are looked up
     # later (in cost_poll_loop) once Claude has actually created them.
-    global cost_trackers
+    global cost_trackers, last_input_time
     cost_trackers = [costs_mod.CostTracker() for _ in range(NUM_SHELLS)]
+    last_input_time = [0.0] * NUM_SHELLS
 
     # 1. Find claude
     claude_path = find_claude()
@@ -1470,6 +1641,10 @@ def main():
         t = threading.Thread(target=pty_reader_thread, args=(master_fd, i), daemon=True)
         t.start()
 
+    # Children exist from here on, so a SIGTERM now has something to clean up
+    # and pane sessions worth handing off to the next server.
+    install_shutdown_handlers(graceful_shutdown)
+
     # 5. Wait briefly, then verify all children still alive
     time.sleep(1)
     for i, pid in enumerate(child_pids):
@@ -1479,6 +1654,7 @@ def main():
             print(f"Warning: Claude {i+1} (PID {pid}) died during startup", flush=True)
 
     print(f"QuadMux: {NUM_SHELLS} Claude instances running", flush=True)
+    account_mod.print_banner()
     asyncio.run(serve(args.port))
 
 

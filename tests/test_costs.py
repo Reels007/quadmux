@@ -28,7 +28,26 @@ def _make_session_dir(tmp_path, cwd_path, usage_lines):
 
 def test_prices_for_opus_default():
     p = costs.prices_for("claude-opus-4-7")
-    assert p["input"] == 15.0 and p["output"] == 75.0
+    assert p["input"] == 5.0 and p["output"] == 25.0
+
+
+def test_prices_for_opus_5_pinned():
+    p = costs.prices_for("claude-opus-5")
+    assert p["input"] == 5.0 and p["output"] == 25.0
+    assert p["cache_read"] == 0.5
+    assert p["cache_write"] == 10.0 and p["cache_write_5m"] == 6.25
+
+
+def test_prices_for_longest_prefix_wins():
+    # "claude-opus-5" must beat the shorter "claude-opus" family entry
+    # regardless of PRICE_TABLE insertion order.
+    assert costs.prices_for("claude-opus-5")["cache_write"] == \
+        costs.PRICE_TABLE["claude-opus-5"]["cache_write"]
+
+
+def test_prices_for_fable():
+    p = costs.prices_for("claude-fable-5")
+    assert p["input"] == 10.0 and p["output"] == 50.0
 
 
 def test_prices_for_sonnet():
@@ -38,7 +57,7 @@ def test_prices_for_sonnet():
 
 def test_prices_for_unknown_falls_back_to_opus():
     p = costs.prices_for("nonsense-model")
-    assert p["input"] == 15.0
+    assert p["input"] == 5.0
 
 
 def test_prices_env_override(monkeypatch):
@@ -49,7 +68,7 @@ def test_prices_env_override(monkeypatch):
 
 def test_compute_cost_basic():
     usage = {"input_tokens": 1_000_000, "output_tokens": 0}
-    assert costs.compute_cost(usage, "claude-opus-4-7") == pytest.approx(15.0)
+    assert costs.compute_cost(usage, "claude-opus-4-7") == pytest.approx(5.0)
 
 
 def test_compute_cost_blends_cache_buckets():
@@ -60,9 +79,46 @@ def test_compute_cost_blends_cache_buckets():
         "cache_creation_input_tokens": 1000,
     }
     c = costs.compute_cost(usage, "claude-opus-4-7")
-    # quick manual check: 100*15/M + 200*75/M + 500*1.5/M + 1000*18.75/M
-    expected = (100 * 15 + 200 * 75 + 500 * 1.5 + 1000 * 18.75) / 1_000_000
+    # No per-TTL breakdown present, so all creation tokens bill at the 1h rate:
+    # 100*5/M + 200*25/M + 500*0.5/M + 1000*10/M
+    expected = (100 * 5 + 200 * 25 + 500 * 0.5 + 1000 * 10) / 1_000_000
     assert c == pytest.approx(expected)
+
+
+def test_compute_cost_splits_cache_write_by_ttl():
+    usage = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 1000,
+        "cache_creation": {
+            "ephemeral_1h_input_tokens": 400,
+            "ephemeral_5m_input_tokens": 600,
+        },
+    }
+    c = costs.compute_cost(usage, "claude-opus-5")
+    assert c == pytest.approx((400 * 10.0 + 600 * 6.25) / 1_000_000)
+
+
+def test_compute_cost_matches_api_reported_total():
+    # Figures captured from a real claude-opus-5 run (--output-format json):
+    # modelUsage["claude-opus-5"].costUSD == 0.195664
+    usage = {
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "cache_read_input_tokens": 15738,
+        "cache_creation_input_tokens": 18761,
+        "cache_creation": {
+            "ephemeral_1h_input_tokens": 18761,
+            "ephemeral_5m_input_tokens": 0,
+        },
+    }
+    assert costs.compute_cost(usage, "claude-opus-5") == pytest.approx(0.195664)
+
+
+def test_cache_write_env_override_covers_both_ttls(monkeypatch):
+    monkeypatch.setenv("QM_PRICE_CACHE_WRITE", "2.0")
+    p = costs.prices_for("claude-opus-5")
+    assert p["cache_write"] == 2.0 and p["cache_write_5m"] == 2.0
 
 
 def test_session_files_finds_match(tmp_path, monkeypatch):
@@ -290,3 +346,156 @@ def test_context_zero_when_no_session(tmp_path):
     assert snap["context_tokens"] == 0
     assert snap["context_pct"] == 0.0
     assert snap["context_limit"] > 0
+
+
+# --- session re-binding: --resume forks and /clear roll the JSONL ----------
+
+CLEAR_LINE = json.dumps({
+    "type": "user", "isMeta": True,
+    "message": {"role": "user", "content":
+                "<command-name>/clear</command-name><command-message>clear</command-message>"}})
+
+
+def _copied_history_line(parent_sid, cache_read=880_000):
+    return json.dumps({"type": "assistant", "sessionId": parent_sid,
+                       "message": {"model": "claude-fable-5",
+                                   "usage": {"input_tokens": 10,
+                                             "cache_read_input_tokens": cache_read,
+                                             "output_tokens": 5}}})
+
+
+def _aged(path, seconds):
+    import time
+    old = time.time() - seconds
+    os.utime(path, (old, old))
+
+
+def test_context_limit_knows_fable_and_bumps_on_overflow():
+    assert costs.context_limit_for("claude-fable-5") == costs.BIG_CONTEXT_LIMIT
+    assert costs.context_limit_for("claude-opus-5") == costs.DEFAULT_CONTEXT_LIMIT
+    # A reading above the nominal window proves the nominal window is wrong.
+    assert costs.context_limit_for("claude-opus-5", seen_tokens=250_000) \
+        == costs.BIG_CONTEXT_LIMIT
+
+
+def test_rebind_follows_resume_fork_without_double_counting(tmp_path):
+    parent = tmp_path / "1111aaaa-0000-0000-0000-000000000001.jsonl"
+    parent.write_text(_assistant(10, cache_read=180_000) + "\n")
+    _aged(parent, 30)
+    t = costs.CostTracker(str(parent))
+    t.poll()
+    assert t.context_tokens == 180_010
+    cost_before = t.cost
+
+    fork = tmp_path / "2222bbbb-0000-0000-0000-000000000002.jsonl"
+    fork.write_text(_copied_history_line("1111aaaa-0000-0000-0000-000000000001") + "\n")
+    _aged(fork, 10)
+
+    known = set()
+    rebinds = costs.find_rebinds([t], [0.0], known)
+    assert rebinds == [(0, str(fork), True)]
+
+    t.attach(str(fork), from_end=True, keep_totals=True)
+    t.poll()
+    # The stale 180k reading is gone and the replayed history line was skipped:
+    # neither its context nor its cost is counted again.
+    assert t.context_tokens == 0
+    assert t.cost == cost_before
+    with open(fork, "a") as fh:
+        fh.write(_assistant(10, cache_read=40_000) + "\n")
+    t.poll()
+    assert t.context_tokens == 40_010
+    assert t.cost > cost_before
+    assert t.session_ids == ["1111aaaa-0000-0000-0000-000000000001",
+                             "2222bbbb-0000-0000-0000-000000000002"]
+
+
+def test_rebind_clear_goes_to_the_pane_that_typed(tmp_path):
+    import time
+    a = tmp_path / "aaaa.jsonl"
+    b = tmp_path / "bbbb.jsonl"
+    for f in (a, b):
+        f.write_text(_assistant(10, cache_read=50_000) + "\n")
+        _aged(f, 120)
+    ta, tb = costs.CostTracker(str(a)), costs.CostTracker(str(b))
+
+    cleared = tmp_path / "cccc.jsonl"
+    cleared.write_text(CLEAR_LINE + "\n" + _assistant(10, cache_read=15_000) + "\n")
+    _aged(cleared, 10)
+
+    now = time.time()
+    known = set()
+    # Pane 1 typed 5s before the clear file was born; pane 0 has been idle.
+    rebinds = costs.find_rebinds([ta, tb], [0.0, now - 15], known, now=now)
+    assert rebinds == [(1, str(cleared), False)]
+    tb.attach(str(cleared), from_end=False, keep_totals=True)
+    tb.poll()
+    # Read from the start: the first post-clear reply is already counted.
+    assert tb.context_tokens == 15_010
+
+
+def test_rebind_leaves_unrelated_sessions_alone(tmp_path):
+    mine = tmp_path / "aaaa.jsonl"
+    mine.write_text(_assistant(10, cache_read=50_000) + "\n")
+    _aged(mine, 120)
+    t = costs.CostTracker(str(mine))
+
+    other = tmp_path / "dddd.jsonl"
+    other.write_text(_assistant(10, cache_read=9_000) + "\n")
+    _aged(other, 10)
+
+    known = set()
+    assert costs.find_rebinds([t], [0.0], known) == []
+    # Young and unmatched: not written off yet (its pane may not be attached).
+    assert str(other) not in known
+    _aged(other, costs.REBIND_GRACE_SECS + 5)
+    assert costs.find_rebinds([t], [0.0], known) == []
+    assert str(other) in known
+
+
+def test_attach_keep_totals_preserves_cumulative_cost(tmp_path):
+    f = tmp_path / "aaaa.jsonl"
+    f.write_text(_assistant(10, cache_read=50_000, output=200) + "\n")
+    t = costs.CostTracker(str(f))
+    t.poll()
+    assert t.cost > 0
+    cost, tokens = t.cost, dict(t.tokens)
+    g = tmp_path / "bbbb.jsonl"
+    g.write_text("")
+    t.attach(str(g), keep_totals=True)
+    assert t.cost == cost and t.tokens == tokens
+    assert t.context_tokens == 0
+    assert t.session_ids == ["aaaa", "bbbb"]
+
+
+def test_rebind_ignores_sessions_that_merely_mention_a_sid(tmp_path):
+    """Seen live: a debugging session whose transcript QUOTED another pane's
+    session id was claimed as that pane's fork. Bare uuid text is not
+    lineage; only a structural "sessionId" field is."""
+    mine = tmp_path / "1111aaaa-0000-0000-0000-000000000001.jsonl"
+    mine.write_text(_assistant(10, cache_read=50_000) + "\n")
+    _aged(mine, 120)
+    t = costs.CostTracker(str(mine))
+
+    import time
+    gossip = tmp_path / "eeee.jsonl"
+    # Filler first, so the quoted /clear marker lands PAST the head-of-file
+    # line window a genuine caveat would sit inside.
+    lines = [json.dumps({"type": "user", "message": {
+        "role": "user", "content": "filler"}})
+        for _ in range(costs.CLEAR_MARKER_SCAN_LINES)]
+    lines.append(json.dumps({
+        "type": "user",
+        "message": {"role": "user", "content":
+                    "pane attached to 1111aaaa-0000-0000-0000-000000000001.jsonl"
+                    " and someone typed <command-name>/clear</command-name>"}}))
+    gossip.write_text("\n".join(lines) + "\n")
+    _aged(gossip, costs.REBIND_GRACE_SECS + 5)
+
+    known = set()
+    # The pane typed recently, so only the two content guards protect it:
+    # bare uuid text is not a fork marker, and a deep /clear quote is not a
+    # /clear caveat.
+    now = time.time()
+    assert costs.find_rebinds([t], [now - 15], known, now=now) == []
+    assert str(gossip) in known
