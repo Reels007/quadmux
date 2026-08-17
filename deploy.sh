@@ -23,6 +23,7 @@ PORT="${QUADMUX_PORT:-8766}"
 FILES=(
   quadmux-server.py
   quadmux.html
+  account_check.py
   activity_log.py
   costs.py
   parked.py
@@ -78,14 +79,37 @@ fi
 if [ "${1:-}" = "--restart" ]; then
   echo
   echo "Restarting server on port $PORT..."
+  echo "  NOTE: this stops all 4 Claude panes. The server writes"
+  echo "        ~/.quadmux/resume_next.json on shutdown, so the new one resumes"
+  echo "        each pane's conversation instead of starting them empty."
   pid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
   if [ -n "$pid" ]; then
     kill "$pid" 2>/dev/null || true
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1 || break
-      sleep 0.3
+    # SIGTERM now runs graceful_shutdown: write the resume map, save the session
+    # buffers, then SIGTERM/SIGKILL the four children. That takes a few seconds,
+    # so wait on the process itself rather than racing it for the port.
+    gone=0
+    for _ in $(seq 1 40); do
+      if ! kill -0 "$pid" 2>/dev/null; then gone=1; break; fi
+      sleep 0.5
     done
-    echo "  killed old server (pid $pid)"
+    if [ "$gone" -eq 1 ]; then
+      echo "  stopped old server cleanly (pid $pid)"
+    else
+      echo "  old server (pid $pid) ignored SIGTERM after 20s, forcing" >&2
+      kill -9 "$pid" 2>/dev/null || true
+      sleep 1
+    fi
+    # The listener can linger a moment after the process goes.
+    for _ in $(seq 1 20); do
+      lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1 || break
+      sleep 0.5
+    done
+    if [ -f "$HOME/.quadmux/resume_next.json" ]; then
+      echo "  resume map present: panes will reattach to their sessions"
+    else
+      echo "  WARNING: no resume map written, panes will start fresh" >&2
+    fi
   else
     echo "  no server was running on $PORT"
   fi

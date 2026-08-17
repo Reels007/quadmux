@@ -127,6 +127,39 @@ body {
   /* .shell.flash animation removed 17 Aug 2026 - pane outline flashing on every command */
   .shell.dead { opacity: 0.35; }
 
+  /* === ZOOM: one pane fills the grid, bigger terminal font === */
+  .grid.zoomed {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+  }
+  .grid.zoomed .shell { display: none !important; }
+  .grid.zoomed .gutter-col, .grid.zoomed .gutter-row { display: none !important; }
+  .grid.zoomed .shell.zoomed {
+    display: flex !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 1 / -1 !important;
+  }
+  .btn-zoom {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #475569;
+    border-radius: 4px;
+    padding: 1px 5px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .btn-zoom:hover { background: #f1f5f9; }
+  body:not(.theme-light) .btn-zoom {
+    border-color: var(--border-subtle, #334155);
+    color: var(--jarvis-ink-dim, #94a3b8);
+  }
+  body:not(.theme-light) .btn-zoom:hover { background: rgba(255,255,255,0.08); }
+  .btn-zoom[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   .shell-header {
     display: flex;
     align-items: center;
@@ -154,7 +187,9 @@ body {
     background: var(--accent);
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
     flex-shrink: 0;
+    cursor: pointer;
   }
+  .shell-number:hover { filter: brightness(1.15); }
 
   .shell-title {
     color: var(--accent);
@@ -2471,7 +2506,8 @@ body {
         <span class="shell-focus-dot"></span>
         <select class="shell-model" data-shell="0" data-pending="0" title="Model for this pane (live /model switch)">
           <option value="" disabled selected>model</option>
-          <option value="opus">Opus 4.8</option>
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
           <option value="sonnet">Sonnet 4.6</option>
           <option value="haiku">Haiku 4.5</option>
           <option value="fable">Fable 5</option>
@@ -2484,6 +2520,7 @@ body {
         <span class="shell-timer" id="timer-0"></span>
         <span class="shell-state" id="state-0" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="0" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-zoom" data-shell="0" title="Expand this pane to full screen (Ctrl+Shift+Z)" aria-label="Expand pane" aria-pressed="false">&#x26F6;</button>
         <button class="btn-park" data-shell="0" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-0" title="alive" aria-label="alive"></span>
       </div>
@@ -2509,7 +2546,8 @@ body {
         <span class="shell-focus-dot"></span>
         <select class="shell-model" data-shell="1" data-pending="0" title="Model for this pane (live /model switch)">
           <option value="" disabled selected>model</option>
-          <option value="opus">Opus 4.8</option>
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
           <option value="sonnet">Sonnet 4.6</option>
           <option value="haiku">Haiku 4.5</option>
           <option value="fable">Fable 5</option>
@@ -2522,6 +2560,7 @@ body {
         <span class="shell-timer" id="timer-1"></span>
         <span class="shell-state" id="state-1" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="1" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-zoom" data-shell="1" title="Expand this pane to full screen (Ctrl+Shift+Z)" aria-label="Expand pane" aria-pressed="false">&#x26F6;</button>
         <button class="btn-park" data-shell="1" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-1" title="alive" aria-label="alive"></span>
       </div>
@@ -2547,7 +2586,8 @@ body {
         <span class="shell-focus-dot"></span>
         <select class="shell-model" data-shell="2" data-pending="0" title="Model for this pane (live /model switch)">
           <option value="" disabled selected>model</option>
-          <option value="opus">Opus 4.8</option>
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
           <option value="sonnet">Sonnet 4.6</option>
           <option value="haiku">Haiku 4.5</option>
           <option value="fable">Fable 5</option>
@@ -2560,6 +2600,7 @@ body {
         <span class="shell-timer" id="timer-2"></span>
         <span class="shell-state" id="state-2" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="2" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-zoom" data-shell="2" title="Expand this pane to full screen (Ctrl+Shift+Z)" aria-label="Expand pane" aria-pressed="false">&#x26F6;</button>
         <button class="btn-park" data-shell="2" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-2" title="alive" aria-label="alive"></span>
       </div>
@@ -2583,7 +2624,8 @@ body {
         <span class="shell-focus-dot"></span>
         <select class="shell-model" data-shell="3" data-pending="0" title="Model for this pane (live /model switch)">
           <option value="" disabled selected>model</option>
-          <option value="opus">Opus 4.8</option>
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
           <option value="sonnet">Sonnet 4.6</option>
           <option value="haiku">Haiku 4.5</option>
           <option value="fable">Fable 5</option>
@@ -2596,6 +2638,7 @@ body {
         <span class="shell-timer" id="timer-3"></span>
         <span class="shell-state" id="state-3" data-state="unknown" title="agent state">idle</span>
         <button class="btn-handoff" data-source="3" title="Hand off this pane's last output to another pane">↪</button>
+        <button class="btn-zoom" data-shell="3" title="Expand this pane to full screen (Ctrl+Shift+Z)" aria-label="Expand pane" aria-pressed="false">&#x26F6;</button>
         <button class="btn-park" data-shell="3" title="Park this pane's task">&#x1F17F;</button>
         <span class="shell-health" id="health-3" title="alive" aria-label="alive"></span>
       </div>
@@ -2654,6 +2697,7 @@ body {
         <kbd>&#8984;K</kbd>/<kbd>Ctrl+K</kbd> Command palette<br>
         <kbd>Ctrl+F</kbd> Search pane<br>
         <kbd>Ctrl+L</kbd> Clear pane<br>
+        <kbd>Ctrl+Shift+Z</kbd> Expand/minimise pane<br>
         <kbd>Ctrl+Shift+L</kbd> Layout<br>
       </div>
     </div>
@@ -2768,6 +2812,60 @@ const terms = [];
 const fitAddons = [];
 const searchAddons = [];
 
+// Make filesystem paths in terminal output clickable (the WebLinks addon only does
+// http/https URLs). A path click sends {type:'open_path'} to the server, which opens
+// it on the Mac (a browser page can't touch local files). Handles paths with spaces
+// and parens (Sean's NATO folders) and paths that wrap across terminal rows.
+const PATH_EXTS = 'stl|obj|3mf|step|stp|ply|gltf|glb|dxf|iges|igs|png|jpe?g|gif|bmp|heic|tiff?|pdf|svg|py|js|ts|md|txt|json|ya?ml|html?|css|scss|csv|tsv|xlsx?|docx?|pptx?|ino|c|h|cpp|hpp|sh|log|zip|stl';
+// Path starts at a boundary, begins /... or ~/..., allows any char (incl space) up to
+// a known file extension at a right boundary. Length-capped to limit false matches.
+const PATH_RE_SRC = "(?<=^|[\\s\"'`([{<>|])(?:~\\/|\\/)[^\\n\\r]{1,240}?\\.(?:" + PATH_EXTS + ")(?=$|[\\s\"'`)\\]}>,;:|])";
+function makePathLinkProvider(term, shellIdx) {
+  return {
+    provideLinks(y, cb) {
+      const links = [];
+      try {
+        const buf = term.buffer.active;
+        const cols = term.cols;
+        const rowIdx = y - 1;                    // provideLinks y is 1-based
+        // reconstruct the full logical (unwrapped) line this row belongs to
+        let start = rowIdx;
+        while (start > 0 && buf.getLine(start) && buf.getLine(start).isWrapped) start--;
+        let end = rowIdx;
+        while (end + 1 < buf.length && buf.getLine(end + 1) && buf.getLine(end + 1).isWrapped) end++;
+        let text = '';
+        for (let r = start; r <= end; r++) {
+          const l = buf.getLine(r);
+          text += (l ? l.translateToString(false) : '').padEnd(cols, ' ');
+        }
+        const re = new RegExp(PATH_RE_SRC, 'g');
+        let m;
+        while ((m = re.exec(text)) !== null) {
+          const len = m[0].length;
+          if (!len) { re.lastIndex++; continue; }
+          const s0 = m.index, e0 = m.index + len - 1;
+          const pathText = m[0];
+          links.push({
+            text: pathText,
+            range: {
+              start: { x: (s0 % cols) + 1, y: start + Math.floor(s0 / cols) + 1 },
+              end:   { x: (e0 % cols) + 2, y: start + Math.floor(e0 / cols) + 1 },
+            },
+            activate: () => {
+              try {
+                if (ws && ws.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'open_path', shell: shellIdx, path: pathText }));
+                }
+              } catch (_) {}
+            },
+          });
+        }
+      } catch (_) {}
+      cb(links.length ? links : undefined);
+    },
+  };
+}
+
 for (let i = 0; i < 4; i++) {
   const fitAddon = new FitAddon.FitAddon();
   const searchAddon = new SearchAddon.SearchAddon();
@@ -2791,6 +2889,8 @@ for (let i = 0; i < 4; i++) {
     ));
   }
   term.open(document.getElementById(`term-${i}`));
+  // Clickable filesystem paths (opens on the Mac via the server; see makePathLinkProvider)
+  try { term.registerLinkProvider(makePathLinkProvider(term, i)); } catch (_) {}
 
   // WebGL renderer keeps each pane's selection self-contained (no cross-pane
   // copy garble) and is faster. Fall back to the default DOM renderer if WebGL
@@ -2956,6 +3056,66 @@ function setLayout(idx) {
 
 btnLayout.addEventListener('click', () => setLayout((currentLayout + 1) % layouts.length));
 
+// --- Zoom: expand one pane to fill the grid, with a bigger terminal font ---
+const BASE_FONT_SIZE = 12;
+const ZOOM_FONT_SIZE = 17;
+let zoomedShell = -1;
+
+function setZoom(idx) {
+  const next = (idx === zoomedShell) ? -1 : idx;   // clicking the zoomed pane minimises it
+  zoomedShell = next;
+  grid.classList.toggle('zoomed', next >= 0);
+  shellEls.forEach((el, i) => el.classList.toggle('zoomed', i === next));
+  document.querySelectorAll('.btn-zoom').forEach(btn => {
+    const i = parseInt(btn.dataset.shell, 10);
+    const on = (i === next);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.innerHTML = on ? '&#x229F;' : '&#x26F6;';
+    btn.title = on ? 'Minimise back to the grid (Ctrl+Shift+Z)'
+                   : 'Expand this pane to full screen (Ctrl+Shift+Z)';
+    btn.setAttribute('aria-label', on ? 'Minimise pane' : 'Expand pane');
+  });
+  // Bigger type while expanded; every pane back to base when minimised.
+  terms.forEach((t, i) => {
+    const want = (i === next) ? ZOOM_FONT_SIZE : BASE_FONT_SIZE;
+    if (t.options.fontSize !== want) t.options.fontSize = want;
+  });
+  if (next >= 0) setActiveShell(next);
+  // Grid/font changes need a layout pass before xterm can measure cell size.
+  setTimeout(fitAll, 60);
+  setTimeout(fitAll, 260);
+}
+
+document.querySelectorAll('.btn-zoom').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setZoom(parseInt(btn.dataset.shell, 10));
+  });
+});
+
+// Clicking the pane number toggles zoom for that pane.
+shellEls.forEach((el, i) => {
+  const num = el.querySelector('.shell-number');
+  if (!num) return;
+  num.title = 'Expand this pane to full screen (click again to restore)';
+  num.setAttribute('role', 'button');
+  num.setAttribute('aria-label', `Expand pane ${i + 1}`);
+  num.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setZoom(i);
+  });
+});
+
+// Double-click empty header space toggles zoom too (not on titles or controls).
+shellEls.forEach((el, i) => {
+  const header = el.querySelector('.shell-header');
+  if (!header) return;
+  header.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, select, input, [contenteditable="true"]')) return;
+    setZoom(i);
+  });
+});
+
 // --- Drag to resize (2x2 mode) ---
 let dragging = null;
 const gutterCol = document.getElementById('gutter-col');
@@ -2991,6 +3151,7 @@ document.addEventListener('mouseup', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (shortcutsOverlay.classList.contains('open')) { shortcutsOverlay.classList.remove('open'); return; }
+    if (zoomedShell >= 0) { e.preventDefault(); setZoom(zoomedShell); return; }
     if (activeShell >= 0) { e.preventDefault(); focusLocked = false; setActiveShell(-1); return; }
   }
   if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '4') {
@@ -3011,6 +3172,12 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.shiftKey && e.key === 'L') {
     e.preventDefault();
     setLayout((currentLayout + 1) % layouts.length);
+    return;
+  }
+  if (e.ctrlKey && e.shiftKey && (e.key === 'Z' || e.key === 'z')) {
+    e.preventDefault();
+    const target = zoomedShell >= 0 ? zoomedShell : (activeShell >= 0 ? activeShell : 0);
+    setZoom(target);
     return;
   }
 });
@@ -3169,6 +3336,10 @@ function connect() {
         void el.offsetWidth;
         el.classList.add('flash');
       }
+    } else if (data.type === 'open_path_done') {
+      showToast(`Opened: ${(data.path || '').split('/').pop()}`);
+    } else if (data.type === 'open_path_error') {
+      showToast(`Could not open (${data.error}): ${(data.path || '').split('/').pop()}`, true);
     } else if (data.type === 'upload_error') {
       console.error('Upload failed:', data.filename, data.error);
       showToast(`Upload failed (${data.filename}): ${data.error}`, true);
@@ -3587,7 +3758,10 @@ function applyPaneMeta(p) {
   // Hydrate the per-pane model dropdown from the persisted choice on connect.
   if (p.model) {
     const modelSel = document.querySelector(`.shell-model[data-shell="${p.shell}"]`);
-    if (modelSel && modelSel.dataset.pending !== '1') modelSel.value = p.model;
+    // pane_models.json written before the pinned Opus ids can hold a bare
+    // "opus"; that alias resolves to Opus 5, so show that rather than blanking.
+    const val = p.model === 'opus' ? 'claude-opus-5' : p.model;
+    if (modelSel && modelSel.dataset.pending !== '1') modelSel.value = val;
   }
   const titleEl = document.querySelector(`.shell-title[data-shell="${p.shell}"]`);
   if (!titleEl) return;
@@ -4161,7 +4335,12 @@ document.querySelectorAll('.btn-park').forEach(btn => {
 });
 
 // --- Per-pane model switcher: sends `/model <alias>` live into that pane ---
-const MODEL_LABELS = { opus: 'Opus 4.8', sonnet: 'Sonnet 4.6', haiku: 'Haiku 4.5', fable: 'Fable 5', opusplan: 'Opus plan' };
+// Opus entries are pinned to full model ids: the bare `opus` alias tracks the
+// latest Opus (now Opus 5), so it can't label a specific version honestly.
+// `opus5` is NOT a valid CLI value - only the full `claude-opus-5` id works.
+const MODEL_LABELS = { 'claude-opus-5': 'Opus 5', 'claude-opus-4-8': 'Opus 4.8',
+                       sonnet: 'Sonnet 4.6', haiku: 'Haiku 4.5', fable: 'Fable 5',
+                       opusplan: 'Opus plan' };
 document.querySelectorAll('.shell-model').forEach(sel => {
   sel.addEventListener('change', () => {
     const idx = parseInt(sel.dataset.shell, 10);
@@ -4191,14 +4370,22 @@ document.querySelectorAll('.btn-fast').forEach(btn => {
   });
 });
 
+// Map a reported model id (from the session JSONL) onto a <select> value.
+// Opus options are pinned full ids, so an Opus build with no matching option
+// (4.7, 4.6, ...) returns '' and leaves the select alone rather than mislabelling.
 function modelAliasFromId(id) {
   if (!id) return '';
   const s = String(id).toLowerCase();
   if (s.includes('fable')) return 'fable';
   if (s.includes('haiku')) return 'haiku';
   if (s.includes('sonnet')) return 'sonnet';
-  if (s.includes('opus')) return 'opus';
+  if (s.startsWith('claude-opus-5')) return 'claude-opus-5';
+  if (s.startsWith('claude-opus-4-8')) return 'claude-opus-4-8';
   return '';
+}
+
+function isOpusValue(v) {
+  return typeof v === 'string' && v.startsWith('claude-opus-');
 }
 
 // Reflect the model Claude is actually running (from cost_snapshot JSONL),
@@ -4209,16 +4396,16 @@ function syncPaneModelSelect(shellIdx, modelId) {
   const alias = modelAliasFromId(modelId);
   if (!alias) return;
   if (sel.dataset.pending === '1') {
-    // opusplan reports as opus at the message level - treat as confirmed.
-    const pendingBase = sel.value === 'opusplan' ? 'opus' : sel.value;
-    if (pendingBase === alias) {
+    // opusplan reports as a plain Opus id at the message level - treat as confirmed.
+    const matched = sel.value === 'opusplan' ? isOpusValue(alias) : sel.value === alias;
+    if (matched) {
       sel.dataset.pending = '0';
       sel.title = 'Model for this pane (live /model switch)';
     }
     return;
   }
-  // opusplan reports as opus at the message level - don't downgrade the label.
-  if (sel.value === 'opusplan' && alias === 'opus') return;
+  // opusplan reports as a plain Opus id - don't downgrade the label.
+  if (sel.value === 'opusplan' && isOpusValue(alias)) return;
   if (sel.value !== alias) sel.value = alias;
 }
 
@@ -5232,6 +5419,10 @@ function cmdkCommands(query) {
   }
   cmds.push({ label: 'Back to input bar', hint: 'esc', keywords: 'unfocus bar',
               run: () => { focusLocked = false; setActiveShell(-1); } });
+  cmds.push({ label: zoomedShell >= 0 ? `Minimise ${cmdkPaneLabel(zoomedShell)} back to grid`
+                                      : `Expand ${tl} to full screen`,
+              hint: 'ctrl+shift+z', keywords: 'zoom maximise fullscreen bigger font enlarge minimise',
+              run: () => setZoom(zoomedShell >= 0 ? zoomedShell : t) });
 
   // Pane actions (target = focused pane, falls back to pane 1)
   cmds.push({ label: `Park task (${tl})`, keywords: 'parked save later',
@@ -5476,8 +5667,62 @@ document.addEventListener('keydown', (e) => {
   }
 }, true);
 
+// ---------------------------------------------------------------------------
+// Startup account banner. All four panes share one credential from ~/.claude,
+// so this is a per-startup fact, not a per-pane one. Neutral by design: it
+// states which account is live and does not judge it. Balance figures come from
+// a hand-maintained dated note (~/.quadmux/account_notes.json) because the real
+// balance lives only in the Claude Console, so they are always labelled.
+async function qmAccountBanner() {
+  let a;
+  try {
+    const r = await fetch('/api/account', { cache: 'no-store' });
+    if (!r.ok) return;
+    a = await r.json();
+  } catch (e) { return; }
+
+  const bar = document.createElement('div');
+  bar.id = 'qm-account-bar';
+  bar.style.cssText = `
+    position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 6px; padding: 6px 14px; z-index: 2100;
+    font-size: 11.5px; line-height: 1.5; box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    display: flex; align-items: center; gap: 10px; max-width: 92vw;
+    opacity: 0; transition: opacity 0.2s ease; cursor: pointer;
+  `;
+  bar.title = 'Click to dismiss';
+
+  if (!a.ok) {
+    bar.innerHTML = '<span style="color:#94a3b8">Claude account</span>'
+      + '<b style="color:#fbbf24">not detected</b>'
+      + '<span style="color:#64748b">' + (a.error ? String(a.error).slice(0, 80) : '') + '</span>';
+  } else {
+    const meta = [a.tier, a.org].filter(Boolean).join(', ');
+    let html = '<span style="color:#94a3b8">Account</span>'
+      + '<b style="font-family:ui-monospace,Menlo,monospace;color:#f8fafc">'
+      + a.email + '</b>';
+    if (meta) html += '<span style="color:#94a3b8">' + meta + '</span>';
+    if (a.credits) {
+      let c = 'credits ' + a.credits;
+      if (a.seats) c += ', seats ' + a.seats;
+      if (a.credits_verified) c += ' (as of ' + a.credits_verified + ')';
+      html += '<span style="color:#64748b">' + c + '</span>';
+    }
+    html += '<span style="color:#475569">all 4 panes</span>';
+    bar.innerHTML = html;
+  }
+
+  document.body.appendChild(bar);
+  requestAnimationFrame(() => { bar.style.opacity = '1'; });
+  const fade = setTimeout(() => { bar.style.opacity = '0'; }, 12000);
+  bar.addEventListener('click', () => { clearTimeout(fade); bar.remove(); });
+  bar.addEventListener('mouseenter', () => { clearTimeout(fade); bar.style.opacity = '1'; });
+}
+
 connect();
 inputEl.focus();
+qmAccountBanner();
 </script>
 </body>
 </html>
