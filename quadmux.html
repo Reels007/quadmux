@@ -3312,12 +3312,6 @@ function connect() {
 
         // (TTS handled server-side via voice_response messages)
 
-        // Flash inactive panes on output
-        if (data.shell !== activeShell) {
-          shellEls[data.shell].classList.remove('flash');
-          void shellEls[data.shell].offsetWidth;
-          shellEls[data.shell].classList.add('flash');
-        }
       }
     } else if (data.type === 'upload_done') {
       cmdkRememberUpload(data.path);
@@ -3325,12 +3319,6 @@ function connect() {
       const pathText = ` ${data.path} `;
       ws.send(JSON.stringify({ type: 'input', shell: data.shell, text: pathText, raw: true }));
       showToast(`Uploaded to pane ${data.shell + 1}: ${(data.path || '').split('/').pop()}`);
-      const el = shellEls[data.shell];
-      if (el) {
-        el.classList.remove('flash');
-        void el.offsetWidth;
-        el.classList.add('flash');
-      }
     } else if (data.type === 'open_path_done') {
       showToast(`Opened: ${(data.path || '').split('/').pop()}`);
     } else if (data.type === 'open_path_error') {
@@ -3393,8 +3381,6 @@ function connect() {
       console.error('Parked error:', data.error);
     } else if (data.type === 'handoff') {
       showToast(`Handoff: pane ${data.source + 1} → pane ${data.target + 1}`);
-      flashPane(data.source);
-      flashPane(data.target);
       refreshActivityIfOpen();
     } else if (data.type === 'handoff_error') {
       showToast(`Handoff failed: ${data.error}`, true);
@@ -3739,14 +3725,6 @@ function showToast(text, isError) {
   toast.style.opacity = '1';
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2200);
-}
-
-function flashPane(idx) {
-  const el = shellEls && shellEls[idx];
-  if (!el) return;
-  el.classList.remove('flash');
-  void el.offsetWidth;
-  el.classList.add('flash');
 }
 
 function applyPaneMeta(p) {
@@ -4924,10 +4902,6 @@ async function voiceLoop(idx) {
         ws.send(JSON.stringify({ type: 'input', shell: idx, text: text, raw: false }));
         timerStart[idx] = Date.now();
         ttsBuffers[idx] = '';
-        // Flash the pane to show input was sent
-        shellEls[idx].classList.remove('flash');
-        void shellEls[idx].offsetWidth;
-        shellEls[idx].classList.add('flash');
       }
     }
   }
