@@ -261,6 +261,25 @@ def load_pane_models():
     return {}
 
 
+PANE_PROMPT_PATH = os.path.expanduser("~/.quadmux/pane_prompt.md")
+
+
+def load_pane_prompt():
+    """Global system-prompt suffix appended to EVERY Claude pane at spawn.
+
+    Read from ~/.quadmux/pane_prompt.md (plain text, '' if absent). It is
+    joined after any preset role prompt. Speed rules live here because a
+    spawn-time system prompt is the one lever QuadMux has over how Claude
+    behaves inside a pane; CLAUDE.md alone plateaued at 1.5 tools per turn.
+    Takes effect on the next restart, not for running panes.
+    """
+    try:
+        with open(PANE_PROMPT_PATH, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 def save_pane_model(idx, alias):
     """Persist (or clear, for '' / 'default') a pane's model choice atomically."""
     models = load_pane_models()
@@ -1570,13 +1589,15 @@ def main():
     # before the next starts. Avoids a refresh-token rotation race that
     # surfaces as "API error 401" on later panes.
     persisted_models = load_pane_models()
+    global_prompt = load_pane_prompt()
     resume_map = load_resume_next()
     for i in range(NUM_SHELLS):
         if i > 0:
             time.sleep(1.5)
         meta = pane_meta[i] if i < len(pane_meta) else {}
         cwd = meta.get("cwd") or None
-        sys_prompt = meta.get("system_prompt") or ""
+        sys_prompt = "\n\n".join(
+            p for p in (meta.get("system_prompt") or "", global_prompt) if p)
         if using_fallback:
             # Fallback CLIs (e.g. gemini) don't accept Claude's --session-id /
             # --append-system-prompt flags, so run them bare. Cost tracking is

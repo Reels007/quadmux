@@ -62,6 +62,7 @@ def test_main_with_preset_creates_worktrees_and_passes_role_args(
     # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
     # models would otherwise inject --model args into the spawn calls.
     monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
+    monkeypatch.setattr(qm_module, "load_pane_prompt", lambda: "")
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -119,6 +120,7 @@ def test_main_without_preset_uses_default_shells(qm_module, monkeypatch):
     # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
     # models would otherwise inject --model args into the spawn calls.
     monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
+    monkeypatch.setattr(qm_module, "load_pane_prompt", lambda: "")
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -155,6 +157,7 @@ def test_no_worktrees_flag_runs_in_repo_cwd(qm_module, fresh_repo, monkeypatch):
     # Isolate from the user's real ~/.quadmux/pane_models.json - persisted
     # models would otherwise inject --model args into the spawn calls.
     monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
+    monkeypatch.setattr(qm_module, "load_pane_prompt", lambda: "")
 
     monkeypatch.setattr(qm_module.sys, "argv", [
         "quadmux-server.py",
@@ -235,3 +238,39 @@ def test_auto_approve_rearms_state_for_next_dialog(qm_module, monkeypatch, tmp_p
     assert bus.permissions[0] is None
     # Next dialog re-triggers a transition and a fresh request.
     assert bus.update(0, "Do you want to proceed?\n❯ 1. Yes\n  2. No\n") == "awaiting_permission"
+
+
+def test_global_pane_prompt_is_appended_to_every_pane(qm_module, monkeypatch, tmp_path):
+    """~/.quadmux/pane_prompt.md is joined onto every pane's system prompt,
+    after any preset role prompt, and absent when the file is missing."""
+    calls = []
+
+    def fake_spawn(claude_path, idx, rows=24, cols=80, cwd=None, extra_args=None):
+        calls.append({"idx": idx, "extra_args": list(extra_args or [])})
+        return (1000 + idx, 10 + idx)
+
+    monkeypatch.setattr(qm_module, "spawn_claude", fake_spawn)
+    monkeypatch.setattr(qm_module, "find_claude", lambda: "/fake/claude")
+    monkeypatch.setattr(qm_module.threading, "Thread", lambda *a, **kw: types.SimpleNamespace(start=lambda: None, daemon=True))
+    monkeypatch.setattr(qm_module, "port_is_free", lambda p: True)
+    monkeypatch.setattr(qm_module.asyncio, "run", lambda *a, **kw: None)
+    monkeypatch.setattr(qm_module.os, "kill", lambda *a, **kw: None)
+    monkeypatch.setattr(qm_module, "load_pane_models", lambda: {})
+    monkeypatch.setattr(qm_module, "load_resume_next", lambda: {})
+
+    prompt_file = tmp_path / "pane_prompt.md"
+    prompt_file.write_text("BATCH RULE: fire every knowable call now.\n")
+    monkeypatch.setattr(qm_module, "PANE_PROMPT_PATH", str(prompt_file))
+    monkeypatch.setattr(qm_module.sys, "argv", ["quadmux-server.py", "--shells", "2", "--port", "9997"])
+    qm_module.main()
+
+    assert len(calls) == 2
+    for c in calls:
+        i = c["extra_args"].index("--append-system-prompt") + 1
+        assert c["extra_args"][i] == "BATCH RULE: fire every knowable call now."
+
+    # Missing file: no prompt flag at all.
+    calls.clear()
+    monkeypatch.setattr(qm_module, "PANE_PROMPT_PATH", str(tmp_path / "absent.md"))
+    qm_module.main()
+    assert all("--append-system-prompt" not in c["extra_args"] for c in calls)

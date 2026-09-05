@@ -240,9 +240,13 @@ body {
   }
   .shell-state[data-state="unknown"]              { background: #6b7280; }
   .shell-state[data-state="idle"]                 { background: #475569; }
-  .shell-state[data-state="thinking"]             { background: #2563eb; animation: state-pulse 1.2s ease-in-out infinite; }
+/* Pulse removed 2026-09-03: a never-ending CSS animation makes Chrome emit
+     frames at 120Hz, and every frame recomposites the four WebGL terminal
+     canvases. Measured 4x240s: ~100%% of a core with the pulse, ~15%% without.
+     Colour alone carries the state. See quadmux.html.bak-*-preanimfix. */
+  .shell-state[data-state="thinking"]             { background: #2563eb; }
   .shell-state[data-state="tool_running"]         { background: #d97706; }
-  .shell-state[data-state="awaiting_permission"]  { background: #dc2626; animation: state-pulse 0.8s ease-in-out infinite; }
+  .shell-state[data-state="awaiting_permission"]  { background: #dc2626; }
   .shell-state[data-state="errored"]              { background: #991b1b; }
   @keyframes state-pulse {
     0%, 100% { opacity: 1; }
@@ -285,12 +289,10 @@ body {
   .btn-voice.voice-active {
     color: #ef4444;
     border-color: #ef4444;
-    animation: voice-pulse 1.5s ease-in-out infinite;
   }
   .btn-voice.voice-active.voice-hearing {
     color: #22c55e;
     border-color: #22c55e;
-    animation: voice-hearing 0.3s ease-in-out infinite;
   }
   .btn-voice:focus-visible { background: var(--surface-3); }
   @keyframes voice-pulse {
@@ -608,7 +610,7 @@ body {
   }
   .voice-health .dot.ok   { background: #4ade80; }
   .voice-health .dot.down { background: #f87171; }
-  .voice-health .dot.wait { background: #facc15; animation: voice-pulse 1s ease-in-out infinite; }
+  .voice-health .dot.wait { background: #facc15; }
   .voice-footer-btn {
     margin-top: 12px;
     width: 100%;
