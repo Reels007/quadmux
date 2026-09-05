@@ -26,6 +26,7 @@ FILES=(
   account_check.py
   activity_log.py
   costs.py
+  nudge.py
   parked.py
   policy.py
   presets.py

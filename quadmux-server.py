@@ -100,6 +100,7 @@ import presets as presets_mod
 import worktree as worktree_mod
 import parked as parked_mod
 import costs as costs_mod
+import nudge as nudge_mod
 import activity_log as activity_mod
 import sessions as sessions_mod
 import account_check as account_mod
@@ -303,6 +304,7 @@ worktree_session_id = None  # for prune-on-shutdown
 
 # Phase 5: per-pane cost trackers
 cost_trackers = []  # list of costs_mod.CostTracker
+compact_nudger = None  # nudge_mod.CompactNudger, built in main()
 last_input_time = []  # wall time of last keyboard input per pane (rebind disambiguation)
 known_session_files = set()  # session JSONLs already judged by find_rebinds()
 COST_POLL_INTERVAL = 5.0  # seconds
@@ -939,6 +941,23 @@ async def cost_poll_loop():
                 changed = True
         if changed:
             await _broadcast_cost()
+        # Auto-compact nudge: mechanical version of "/compact at 150k".
+        # Off unless policy.json sets auto_compact_tokens; see nudge.py.
+        if compact_nudger is not None and bus is not None:
+            for i, t in enumerate(cost_trackers):
+                if not t or i >= len(masters) or masters[i] is None:
+                    continue
+                snap = t.snapshot()
+                text = compact_nudger.check(i, snap["context_tokens"], bus.states[i], now=now)
+                if text:
+                    try:
+                        os.write(masters[i], (text + "\r").encode())
+                    except OSError:
+                        continue
+                    bus._log({"type": "compact_nudge", "shell": i,
+                              "context_tokens": snap["context_tokens"], "ts": time.time()})
+                    print(f"  Nudge: pane {i+1} at {snap['context_tokens']} context tokens, "
+                          f"asked to save state + /compact", flush=True)
 
 
 async def broadcast_error(idx, text):
@@ -1541,6 +1560,8 @@ def main():
     # Load previous session buffers (conversation history survives restart)
     shell_buffers = load_session()
     bus = StatusBus(NUM_SHELLS)
+    global compact_nudger
+    compact_nudger = nudge_mod.CompactNudger(NUM_SHELLS)
 
     # Phase 5: initialise per-pane cost trackers. Session files are looked up
     # later (in cost_poll_loop) once Claude has actually created them.
