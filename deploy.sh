@@ -14,6 +14,16 @@
 #
 set -euo pipefail
 
+# Guard: the Mac mini is the dev machine (6 Nov 2026). Refuse to deploy on any
+# other Mac unless the caller confirms they know it is not the dev machine.
+if ! ifconfig 2>/dev/null | grep -q "inet 100.88.87.92 "; then
+  if [ "${I_KNOW_NOT_DEV_MACHINE:-}" != "1" ]; then
+    echo "REFUSED: this is not the dev machine (the Mac mini is)." >&2
+    echo "Deploy on the mini, or re-run with I_KNOW_NOT_DEV_MACHINE=1 if you really mean this Mac." >&2
+    exit 1
+  fi
+fi
+
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST_DIR="$HOME/Library/Application Support/ClaudeX4"
 PORT="${QUADMUX_PORT:-8766}"
@@ -78,6 +88,13 @@ else
 fi
 
 if [ "${1:-}" = "--restart" ]; then
+  if launchctl print "gui/$(id -u)/com.seanreel.quadmux" >/dev/null 2>&1; then
+    echo; echo "Restarting server via launchd (com.seanreel.quadmux)..."
+    launchctl kickstart -k "gui/$(id -u)/com.seanreel.quadmux"
+    for _ in $(seq 1 40); do curl -s -o /dev/null "http://localhost:$PORT" && break; sleep 0.5; done
+    curl -s -o /dev/null "http://localhost:$PORT" && echo "  server back up" || { echo "  server did not come back" >&2; exit 1; }
+    exit 0
+  fi
   echo
   echo "Restarting server on port $PORT..."
   echo "  NOTE: this stops all 4 Claude panes. The server writes"
@@ -114,7 +131,20 @@ if [ "${1:-}" = "--restart" ]; then
   else
     echo "  no server was running on $PORT"
   fi
-  nohup python3 "$DEST_DIR/quadmux-server.py" --port "$PORT" >"$DEST_DIR/server.log" 2>&1 &
+  # TCC-stable interpreter. macOS pins a Full Disk Access grant to the real
+  # path of the executable, and plain `python3` resolves to the versioned
+  # Homebrew Cellar path (.../python@3.15/3.15.2/...), so every brew python
+  # upgrade silently revokes the grant and Desktop reads start failing with
+  # "Operation not permitted". QuadmuxPython.app is a fixed-path copy of that
+  # bundle, relinked to the stable framework symlink, so the grant survives.
+  # Falls back to python3 if the copy is missing, so a lost bundle cannot
+  # stop the server starting.
+  QUADMUX_PY="$DEST_DIR/QuadmuxPython.app/Contents/MacOS/Python"
+  if [ ! -x "$QUADMUX_PY" ]; then
+    echo "  WARNING: QuadmuxPython.app missing, falling back to python3 (Full Disk Access will not apply)" >&2
+    QUADMUX_PY="python3"
+  fi
+  nohup "$QUADMUX_PY" "$DEST_DIR/quadmux-server.py" --port "$PORT" >"$DEST_DIR/server.log" 2>&1 &
   # Startup staggers pane spawns 1.5s apart, so the port can take several
   # seconds to open; poll up to 15s instead of checking once.
   newpid=""

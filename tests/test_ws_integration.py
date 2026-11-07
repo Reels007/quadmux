@@ -1,4 +1,4 @@
-"""End-to-end WS dispatch tests for phase 4 (handoff) and parked sidebar.
+"""End-to-end WS dispatch tests for phase 4 (handoff).
 
 We don't spawn Claude or a real websockets server. Instead, we drive
 ``handler()`` directly with a fake WebSocket and capture what the server
@@ -44,7 +44,7 @@ class FakeWS:
         return self.incoming.pop(0)
 
 
-def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
+def _setup_server(qm, num_shells, monkeypatch, bus_log=None,
                   cost_trackers=None, sessions_root=None):
     qm.NUM_SHELLS = num_shells
     qm.shell_buffers = [[] for _ in range(num_shells)]
@@ -56,7 +56,6 @@ def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
     qm.cost_trackers = cost_trackers if cost_trackers is not None else []
     qm.session_id = ""
     qm.session_dir = ""
-    monkeypatch.setattr(qm.parked_mod, "PARKED_PATH", str(parked_path))
     if bus_log is not None:
         monkeypatch.setattr(qm.activity_mod, "BUS_LOG", str(bus_log))
         import status_bus as _sb
@@ -66,7 +65,7 @@ def _setup_server(qm, num_shells, monkeypatch, parked_path, bus_log=None,
 
 
 def test_handoff_writes_to_target_pty(qm, tmp_path, monkeypatch):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
 
     # Pretend pane 0 has produced some prose
     qm.shell_buffers[0].append(
@@ -104,7 +103,7 @@ def test_handoff_writes_to_target_pty(qm, tmp_path, monkeypatch):
 
 
 def test_handoff_rejects_bad_target(qm, tmp_path, monkeypatch):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
     monkeypatch.setattr(qm.os, "write", lambda fd, data: len(data))
     qm.masters = [10, 11]
 
@@ -119,7 +118,7 @@ def test_handoff_rejects_bad_target(qm, tmp_path, monkeypatch):
 
 
 def test_handoff_rejects_when_no_prose(qm, tmp_path, monkeypatch):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
     # buffers empty -> no prose
     monkeypatch.setattr(qm.os, "write", lambda fd, data: len(data))
     qm.masters = [10, 11]
@@ -132,67 +131,8 @@ def test_handoff_rejects_when_no_prose(qm, tmp_path, monkeypatch):
     assert errors and "no prose to hand off" in errors[0]["error"]
 
 
-def test_parked_add_creates_and_broadcasts(qm, tmp_path, monkeypatch):
-    parked_path = tmp_path / "parked.json"
-    _setup_server(qm, 2, monkeypatch, parked_path)
-
-    msg = json.dumps({
-        "type": "parked_add",
-        "title": "WS-test task",
-        "note": "hello",
-        "status": "blocked",
-        "pane": 0,
-    })
-    ws = FakeWS([msg])
-    asyncio.run(qm.handler(ws))
-
-    # Task persisted to disk
-    data = json.loads(parked_path.read_text())
-    assert data["tasks"][0]["title"] == "WS-test task"
-    assert data["tasks"][0]["status"] == "blocked"
-    # Broadcast carried the new task
-    parked_add = [s for s in ws.sent if '"type": "parked_add"' in s]
-    assert parked_add
-    payload = json.loads(parked_add[0])
-    assert payload["task"]["title"] == "WS-test task"
-
-
-def test_parked_update_and_delete_via_ws(qm, tmp_path, monkeypatch):
-    parked_path = tmp_path / "parked.json"
-    _setup_server(qm, 2, monkeypatch, parked_path)
-
-    # Pre-seed
-    t = qm.parked_mod.add_task("Initial", status="parked")
-
-    update_msg = json.dumps({
-        "type": "parked_update",
-        "id": t["id"],
-        "status": "in-progress",
-        "title": "Renamed",
-    })
-    delete_msg = json.dumps({"type": "parked_delete", "id": t["id"]})
-    ws = FakeWS([update_msg, delete_msg])
-    asyncio.run(qm.handler(ws))
-
-    # After the run, file should reflect deletion (last action)
-    assert qm.parked_mod.list_tasks() == []
-
-    # Broadcasts should include both an update with the new title/status
-    # and a delete with the id.
-    updates = [s for s in ws.sent if '"type": "parked_update"' in s]
-    assert updates
-    payload = json.loads(updates[0])
-    assert payload["task"]["title"] == "Renamed"
-    assert payload["task"]["status"] == "in-progress"
-    deletes = [s for s in ws.sent if '"type": "parked_delete"' in s]
-    assert deletes
-    assert json.loads(deletes[0])["id"] == t["id"]
-
-
 def test_initial_connect_sends_snapshots(qm, tmp_path, monkeypatch):
-    parked_path = tmp_path / "parked.json"
-    _setup_server(qm, 2, monkeypatch, parked_path)
-    qm.parked_mod.add_task("Pre-existing", note="should appear on connect")
+    _setup_server(qm, 2, monkeypatch)
 
     ws = FakeWS([])  # no inbound messages -> just send snapshots and exit
     asyncio.run(qm.handler(ws))
@@ -204,12 +144,8 @@ def test_initial_connect_sends_snapshots(qm, tmp_path, monkeypatch):
         except json.JSONDecodeError:
             pass
     for required in ("hello", "state_snapshot", "permission_snapshot",
-                     "pane_meta", "parked_list", "cost_snapshot"):
+                     "pane_meta", "cost_snapshot"):
         assert required in types_sent, f"missing {required} on connect"
-
-    # parked_list payload contains the seeded task
-    parked_list_msg = next(s for s in ws.sent if '"parked_list"' in s)
-    assert "Pre-existing" in parked_list_msg
 
 
 def test_activity_request_returns_filtered_events(qm, tmp_path, monkeypatch):
@@ -220,7 +156,7 @@ def test_activity_request_returns_filtered_events(qm, tmp_path, monkeypatch):
         json.dumps({"type": "handoff", "source": 0, "target": 1, "ts": 3.0}),
         json.dumps({"type": "permission_request", "id": 1, "shell": 0, "ts": 4.0}),
     ]) + "\n")
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json", bus_log=bus_log)
+    _setup_server(qm, 2, monkeypatch, bus_log=bus_log)
 
     msg = json.dumps({"type": "activity_request", "limit": 50,
                       "types": ["state", "handoff"]})
@@ -253,7 +189,7 @@ def test_session_list_and_replay_via_ws(qm, tmp_path, monkeypatch):
     (sess_dir / "shell_0.json").write_text(json.dumps(
         {"buffer": ["hello", " world"]}))
 
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json",
+    _setup_server(qm, 2, monkeypatch,
                   bus_log=bus_log, sessions_root=sessions_root)
 
     msgs = [
@@ -289,7 +225,7 @@ def test_cost_snapshot_reflects_tracker_totals(qm, tmp_path, monkeypatch):
     tracker = qm.costs_mod.CostTracker(str(session))
     tracker.poll()  # pull the line into the tracker
 
-    _setup_server(qm, 1, monkeypatch, tmp_path / "parked.json",
+    _setup_server(qm, 1, monkeypatch,
                   cost_trackers=[tracker])
 
     ws = FakeWS([])

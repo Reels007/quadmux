@@ -47,7 +47,7 @@ def test_red(engine, text):
     "Do you want to run: ls -la ~/Desktop?",
     "Bash(git status)",
     "Bash(git log --oneline -5)",
-    "Bash(cat ~/.quadmux/parked.json)",
+    "Bash(cat ~/.quadmux/sessions.json)",
     "Bash(find . -name '*.py')",
     "Allow WebSearch for 'hydration market size'?",
 ])

@@ -156,7 +156,7 @@ def test_default_roots_include_home_and_tmp(qm, monkeypatch):
 # --- WS dispatch -----------------------------------------------------------
 
 def test_ws_open_path_launches_and_confirms(qm, tmp_path, monkeypatch, rooted):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
     f = rooted / "part.stl"
     f.write_text("solid")
 
@@ -173,7 +173,7 @@ def test_ws_open_path_launches_and_confirms(qm, tmp_path, monkeypatch, rooted):
 
 
 def test_ws_open_path_rejects_without_launching(qm, tmp_path, monkeypatch, rooted):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
     outside = tmp_path / "outside.txt"
     outside.write_text("secret")
 
@@ -191,7 +191,7 @@ def test_ws_open_path_rejects_without_launching(qm, tmp_path, monkeypatch, roote
 
 
 def test_ws_open_path_reports_launch_failure(qm, tmp_path, monkeypatch, rooted):
-    _setup_server(qm, 2, monkeypatch, tmp_path / "parked.json")
+    _setup_server(qm, 2, monkeypatch)
     f = rooted / "part.stl"
     f.write_text("solid")
 

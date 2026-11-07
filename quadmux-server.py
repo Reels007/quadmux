@@ -76,6 +76,67 @@ def launch_open(path: str):
     subprocess.Popen(["open", path],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+# --- remote open (QuadMux viewed over Tailscale) -----------------------------
+# When the UI is opened from another machine, `open` would pop the file up on
+# the server's screen, not the viewer's. The client instead GETs
+# /api/file?path=... and the browser shows or downloads it. Same root guard as
+# open_path. Responses carry `CSP: sandbox` so a served HTML file can never run
+# script in QuadMux's origin (and so can never reach the pane WebSocket).
+FILE_MAX_BYTES = 200 * 1024 * 1024
+_INLINE_TEXT_EXTS = {".py", ".md", ".txt", ".log", ".json", ".yaml", ".yml", ".toml",
+                     ".ts", ".tsx", ".js", ".jsx", ".css", ".sh", ".csv", ".ini", ".cfg",
+                     ".conf", ".xml", ".sql", ".rs", ".go", ".swift", ".c", ".h", ".cpp",
+                     ".java", ".kt", ".rb", ".env", ".plist", ".diff", ".patch"}
+
+def build_file_response(raw_path: str):
+    """Return (status, header_pairs, body) serving ``raw_path`` to a browser."""
+    import html as _html
+    import mimetypes
+    from urllib.parse import quote
+    base_headers = [("Cache-Control", "no-store"),
+                    ("Content-Security-Policy", "sandbox"),
+                    ("X-Content-Type-Options", "nosniff")]
+    ok, real, err = resolve_open_path(raw_path)
+    if not ok:
+        return 404, base_headers + [("Content-Type", "text/plain; charset=utf-8")], err.encode()
+    if os.path.isdir(real):
+        rows = []
+        parent = os.path.dirname(real)
+        if parent != real and resolve_open_path(parent)[0]:
+            rows.append(f'<li><a href="/api/file?path={quote(parent)}">..</a></li>')
+        try:
+            names = sorted(os.listdir(real), key=str.lower)
+        except OSError as e:
+            return 403, base_headers + [("Content-Type", "text/plain; charset=utf-8")], str(e).encode()
+        for n in names:
+            child = os.path.join(real, n)
+            slash = "/" if os.path.isdir(child) else ""
+            rows.append(f'<li><a href="/api/file?path={quote(child)}">{_html.escape(n)}{slash}</a></li>')
+        body = (f"<!doctype html><meta charset=utf-8><title>{_html.escape(real)}</title>"
+                f"<style>body{{font:14px -apple-system,sans-serif;margin:16px}}li{{margin:2px 0}}</style>"
+                f"<h3>{_html.escape(real)}</h3><ul>{''.join(rows)}</ul>").encode()
+        return 200, base_headers + [("Content-Type", "text/html; charset=utf-8")], body
+    try:
+        size = os.path.getsize(real)
+    except OSError as e:
+        return 404, base_headers + [("Content-Type", "text/plain; charset=utf-8")], str(e).encode()
+    if size > FILE_MAX_BYTES:
+        return 413, base_headers + [("Content-Type", "text/plain; charset=utf-8")], \
+            f"file is {size // (1024*1024)} MB, over the {FILE_MAX_BYTES // (1024*1024)} MB limit".encode()
+    ext = os.path.splitext(real)[1].lower()
+    ctype, _ = mimetypes.guess_type(real)
+    if ext in _INLINE_TEXT_EXTS or (ctype or "").startswith("text/") and ctype != "text/html":
+        ctype, inline = "text/plain; charset=utf-8", True
+    elif ctype and (ctype.split("/")[0] in ("image", "audio", "video")
+                    or ctype in ("application/pdf", "text/html")):
+        inline = True
+    else:
+        ctype, inline = ctype or "application/octet-stream", False
+    with open(real, "rb") as f:
+        body = f.read()
+    disp = ("inline" if inline else "attachment") + f"; filename*=UTF-8''{quote(os.path.basename(real))}"
+    return 200, base_headers + [("Content-Type", ctype), ("Content-Disposition", disp)], body
+
 QUICKLOOK_EXTS = {".stl", ".obj", ".3mf", ".step", ".stp", ".ply", ".gltf", ".glb",
                   ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".heic", ".tif", ".tiff",
                   ".pdf", ".svg", ".dxf"}
@@ -98,7 +159,6 @@ from status_bus import StatusBus, is_dialog_answer_key
 from policy import PolicyEngine
 import presets as presets_mod
 import worktree as worktree_mod
-import parked as parked_mod
 import costs as costs_mod
 import nudge as nudge_mod
 import activity_log as activity_mod
@@ -515,12 +575,17 @@ def kill_stale_server(port):
         pass
 
 
+# Interface the server binds to. "localhost" by default; set with --host (e.g. the
+# Mac mini's Tailscale IP 100.88.87.92) so other tailnet machines can open the UI.
+BIND_HOST = "localhost"
+
+
 def port_is_free(port):
     """Check if a port is available."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind(("localhost", port))
+            s.bind((BIND_HOST, port))
             return True
         except OSError:
             return False
@@ -770,24 +835,6 @@ async def _broadcast_permission_request(req):
             clients.discard(ws)
 
 
-async def _broadcast_parked_update(task, action="update"):
-    msg = json.dumps({"type": "parked_" + action, "task": task})
-    for ws in clients.copy():
-        try:
-            await ws.send(msg)
-        except (websockets.ConnectionClosed, ConnectionError):
-            clients.discard(ws)
-
-
-async def _broadcast_parked_delete(task_id):
-    msg = json.dumps({"type": "parked_delete", "id": task_id})
-    for ws in clients.copy():
-        try:
-            await ws.send(msg)
-        except (websockets.ConnectionClosed, ConnectionError):
-            clients.discard(ws)
-
-
 async def _broadcast_handoff(source, target, instruction):
     msg = json.dumps({"type": "handoff", "source": source, "target": target,
                       "instruction": instruction, "ts": time.time()})
@@ -996,6 +1043,13 @@ async def http_handler(connection, request):
             ("Cache-Control", "no-store"),
         ]), body)
 
+    if getattr(request, "path", "").startswith("/api/file?") or getattr(request, "path", "") == "/api/file":
+        from urllib.parse import urlsplit, parse_qs
+        q = parse_qs(urlsplit(request.path).query)
+        status, header_pairs, body = await asyncio.to_thread(
+            build_file_response, (q.get("path") or [""])[0])
+        return Response(status, "OK" if status == 200 else "ERR", Headers(header_pairs), body)
+
     try:
         from voice_routes import dispatch
         route_result = await dispatch(request)
@@ -1053,9 +1107,6 @@ async def handler(ws):
                 for i in range(NUM_SHELLS)
             ]
             await ws.send(json.dumps({"type": "pane_meta", "panes": meta_payload}))
-            # Parked tasks sidebar
-            await ws.send(json.dumps({"type": "parked_list",
-                                      "tasks": parked_mod.list_tasks()}))
             # Cost snapshot (per-pane tokens + total)
             await ws.send(json.dumps(_cost_snapshot_payload()))
         except websockets.ConnectionClosed:
@@ -1194,38 +1245,6 @@ async def handler(ws):
                     events = []
                 await ws.send(json.dumps({"type": "activity_response",
                                           "events": events}))
-            elif msg_type == "parked_add":
-                try:
-                    task = parked_mod.add_task(
-                        title=data.get("title", ""),
-                        note=data.get("note", ""),
-                        status=data.get("status", "parked"),
-                        pane=data.get("pane"),
-                        waiting_on=data.get("waiting_on", ""),
-                        follow_up_at=data.get("follow_up_at"),
-                        priority=data.get("priority", "normal"),
-                    )
-                    await _broadcast_parked_update(task, action="add")
-                except ValueError as e:
-                    await ws.send(json.dumps({"type": "parked_error",
-                                              "error": str(e)}))
-            elif msg_type == "parked_update":
-                tid = data.get("id")
-                if not isinstance(tid, int):
-                    continue
-                fields = {k: data[k] for k in
-                          ("title", "note", "status", "pane",
-                           "waiting_on", "follow_up_at", "priority")
-                          if k in data}
-                updated = parked_mod.update_task(tid, **fields)
-                if updated:
-                    await _broadcast_parked_update(updated, action="update")
-            elif msg_type == "parked_delete":
-                tid = data.get("id")
-                if not isinstance(tid, int):
-                    continue
-                if parked_mod.delete_task(tid):
-                    await _broadcast_parked_delete(tid)
             elif msg_type == "handoff_request":
                 # Snapshot source pane's recent prose and inject it into target pane.
                 source = data.get("source")
@@ -1401,9 +1420,9 @@ async def serve(port):
     asyncio.create_task(autosave_loop())
     asyncio.create_task(bus_tick_loop())
     asyncio.create_task(cost_poll_loop())
-    print(f"QuadMux UI:  http://localhost:{port}", flush=True)
-    print(f"WebSocket:   ws://localhost:{port}", flush=True)
-    async with websockets.serve(handler, "localhost", port, process_request=http_handler,
+    print(f"QuadMux UI:  http://{BIND_HOST}:{port}", flush=True)
+    print(f"WebSocket:   ws://{BIND_HOST}:{port}", flush=True)
+    async with websockets.serve(handler, BIND_HOST, port, process_request=http_handler,
                                 max_size=80 * 1024 * 1024):
         await asyncio.Future()
 
@@ -1476,6 +1495,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="QuadMux - Multi-pane Claude Code multiplexer")
     parser.add_argument("--shells", type=int, default=4, help="Number of Claude instances (default: 4)")
+    parser.add_argument("--host", type=str, default="localhost",
+                        help="Interface to bind (default: localhost). Use the Tailscale IP, e.g. 100.88.87.92, to serve the tailnet.")
     parser.add_argument("--port", type=int, default=8766, help="WebSocket/HTTP port (default: 8766; 8765 is used by voicemode MCP)")
     parser.add_argument("--preset", type=str, default=None,
                         help=f"Role preset (one of: {', '.join(presets_mod.list_preset_names())}). "
@@ -1490,6 +1511,8 @@ def main():
                         help="CLI to fail over to if Anthropic is unreachable at startup (default: gemini). "
                              "Set to '' to disable failover. Requires that CLI installed + authed.")
     args = parser.parse_args()
+    global BIND_HOST
+    BIND_HOST = args.host
 
     # Resolve preset + worktrees first so NUM_SHELLS matches the preset size.
     preset_roles = None
