@@ -17,7 +17,7 @@ echo "launch-arch=$(uname -m) translated=$(sysctl -n sysctl.proc_translated 2>/d
 # same origin. On any other machine: just open the mini's HTTPS URL.
 # QUADMUX_HOST=localhost forces the old local-only mode on any machine.
 MINI_IP=100.88.87.92
-MINI_URL="https://mac-mini.tailb087a9.ts.net"
+MINI_URL="https://mac-mini.tailb087a9.ts.net:8443"
 HOST="${QUADMUX_HOST:-$MINI_IP}"
 PORT=8766
 TS=$(command -v tailscale || echo /Applications/Tailscale.app/Contents/MacOS/Tailscale)
