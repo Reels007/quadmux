@@ -2565,7 +2565,10 @@ const searchAddons = [];
 const PATH_EXTS = 'stl|obj|3mf|step|stp|ply|gltf|glb|dxf|iges|igs|png|jpe?g|gif|bmp|heic|tiff?|pdf|svg|py|js|ts|md|txt|json|ya?ml|html?|css|scss|csv|tsv|xlsx?|docx?|pptx?|ino|c|h|cpp|hpp|sh|log|zip|stl';
 // Path starts at a boundary, begins /... or ~/..., allows any char (incl space) up to
 // a known file extension at a right boundary. Length-capped to limit false matches.
-const PATH_RE_SRC = "(?<=^|[\\s\"'`([{<>|])(?:~\\/|\\/)[^\\n\\r]{1,240}?\\.(?:" + PATH_EXTS + ")(?=$|[\\s\"'`)\\]}>,;:|])";
+const PATH_BOUND = "[\\s\"'`)\\]}>,;:|]";
+// A trailing . ! or ? also ends a path, but only when itself at a boundary, so a
+// path at the end of a sentence linkifies while /tmp/a.py.bak still does not.
+const PATH_RE_SRC = "(?<=^|[\\s\"'`([{<>|])(?:~\\/|\\/)[^\\n\\r]{1,240}?\\.(?:" + PATH_EXTS + ")(?=$|" + PATH_BOUND + "|[.!?](?=$|" + PATH_BOUND + "))";
 function makePathLinkProvider(term, shellIdx) {
   return {
     provideLinks(y, cb) {
