@@ -2642,15 +2642,64 @@ function qmIgnoreAppMouse(term) {
   let allow = false;
   try { allow = localStorage.getItem('qm_app_mouse') === '1'; } catch (_) {}
   if (allow || !term.parser || !term.parser.registerCsiHandler) return;
+  // Remember what we took, so qmWheelToApp below knows the app wanted the mouse
+  // and which encoding to answer in.
+  term._qmAppMouse = { any: false, sgr: false };
   term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
     const flat = params.map(p => Array.isArray(p) ? p[0] : p);
     if (!flat.some(p => QM_MOUSE_MODES.has(p))) return false;   // not ours: default handling
+    for (const p of flat) {
+      if (p === 1006 || p === 1015 || p === 1016) term._qmAppMouse.sgr = true;
+      else if (QM_MOUSE_MODES.has(p)) term._qmAppMouse.any = true;
+    }
     const rest = flat.filter(p => !QM_MOUSE_MODES.has(p));
     if (rest.length) setTimeout(() => term.write(`\x1b[?${rest.join(';')}h`), 0);
     return true;                                                // swallowed
   });
+  // A disable is passed through (xterm never saw the enable), but stop claiming
+  // the app wants wheel reports once it has given the mouse back.
+  term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
+    const flat = params.map(p => Array.isArray(p) ? p[0] : p);
+    if (flat.some(p => p === 1000 || p === 1001 || p === 1002 || p === 1003 || p === 9)) {
+      term._qmAppMouse.any = false;
+    }
+    return false;                                               // default handling
+  });
 }
 // --- end plain drag selects text ---------------------------------------------
+
+// --- Wheel still scrolls the app ---------------------------------------------
+// Swallowing the mouse modes above is what makes a drag select, but it also took
+// the wheel away from the app, and in the alternate screen xterm has no
+// scrollback of its own to move, so panes stopped scrolling at all (Sean, 23 Nov
+// 2026). Synthesise only the wheel reports and send those on: Claude Code
+// scrolls, while press and drag stay with the selection.
+function qmWheelToApp(term, idx, el) {
+  if (!el) return;
+  el.addEventListener('wheel', (e) => {
+    const m = term._qmAppMouse;
+    if (!m || !m.any) return;                             // app never asked for the mouse
+    if (term.buffer.active.type !== 'alternate') return;  // normal buffer: xterm scrolls it
+    const step = e.deltaMode === 1 ? 1 : (e.deltaMode === 2 ? term.rows : 16);
+    let lines = Math.trunc(e.deltaY / step);
+    if (!lines && e.deltaY) lines = e.deltaY > 0 ? 1 : -1;
+    if (!lines) return;
+    const btn = lines > 0 ? 65 : 64;                      // 64 wheel up, 65 wheel down
+    const n = Math.min(Math.abs(lines), 10);
+    const r = el.getBoundingClientRect();
+    const col = Math.min(term.cols, Math.max(1, Math.ceil((e.clientX - r.left) / (r.width / term.cols))));
+    const row = Math.min(term.rows, Math.max(1, Math.ceil((e.clientY - r.top) / (r.height / term.rows))));
+    let seq = '';
+    for (let k = 0; k < n; k++) {
+      seq += m.sgr
+        ? `\x1b[<${btn};${col};${row}M`
+        : `\x1b[M${String.fromCharCode(32 + btn, 32 + col, 32 + row)}`;
+    }
+    safeSendInput({ type: 'input', shell: idx, text: seq, raw: true });
+    e.preventDefault();
+  }, { passive: false });
+}
+// --- end wheel still scrolls the app -----------------------------------------
 
 for (let i = 0; i < 4; i++) {
   const fitAddon = new FitAddon.FitAddon();
@@ -2676,6 +2725,7 @@ for (let i = 0; i < 4; i++) {
   }
   qmIgnoreAppMouse(term);
   term.open(document.getElementById(`term-${i}`));
+  qmWheelToApp(term, i, document.getElementById(`term-${i}`));
   // Clickable filesystem paths (opens on the Mac via the server; see makePathLinkProvider)
   try { term.registerLinkProvider(makePathLinkProvider(term, i)); } catch (_) {}
 
