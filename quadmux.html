@@ -2439,6 +2439,7 @@ body {
         <b style="color:var(--text-secondary)">Actions</b><br>
         <kbd>&#8984;K</kbd>/<kbd>Ctrl+K</kbd> Command palette<br>
         <kbd>Ctrl+F</kbd> Search pane<br>
+        <kbd>&#8984;C</kbd>/<kbd>Ctrl+Shift+C</kbd> Copy pane selection<br>
         <kbd>Ctrl+L</kbd> Clear pane<br>
         <kbd>Ctrl+Shift+Z</kbd> Expand/minimise pane<br>
         <kbd>Ctrl+Shift+L</kbd> Layout<br>
@@ -2598,14 +2599,25 @@ function makePathLinkProvider(term, shellIdx) {
             text: pathText,
             range: {
               start: { x: (s0 % cols) + 1, y: start + Math.floor(s0 / cols) + 1 },
-              end:   { x: (e0 % cols) + 2, y: start + Math.floor(e0 / cols) + 1 },
+              end:   { x: (e0 % cols) + 1, y: start + Math.floor(e0 / cols) + 1 },
             },
             activate: () => {
               try {
                 if (VIA_TS_SERVE) {
                   // Viewing from another machine over Tailscale: `open` on the server
                   // would show the file on the mini's screen. Fetch it into this browser.
-                  window.open('/api/file?path=' + encodeURIComponent(pathText), '_blank', 'noopener');
+                  // window.open here is treated as a popup and Chrome kills it
+                  // (ERR_BLOCKED_BY_CLIENT) when the user gesture is not carried
+                  // through. A synthetic click on a real anchor counts as user
+                  // initiated, so it survives the popup blocker.
+                  const a = document.createElement('a');
+                  a.href = '/api/file?path=' + encodeURIComponent(pathText);
+                  a.target = '_blank';
+                  a.rel = 'noopener';
+                  a.style.display = 'none';
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
                 } else if (ws && ws.readyState === 1) {
                   ws.send(JSON.stringify({ type: 'open_path', shell: shellIdx, path: pathText }));
                 }
@@ -2618,6 +2630,27 @@ function makePathLinkProvider(term, shellIdx) {
     },
   };
 }
+
+// --- Plain drag selects text -------------------------------------------------
+// Claude Code turns on terminal mouse reporting (DECSET 1000/1002/1003, with the
+// 1006/1015/1016 encodings). While that is on, xterm hands every drag to the app
+// and makes no selection, so Cmd+C had nothing to copy (Sean, 22 Nov 2026).
+// Swallow those enables so a plain drag always selects. To give the mouse back
+// to the app, set localStorage qm_app_mouse = '1' and reload.
+const QM_MOUSE_MODES = new Set([9, 1000, 1001, 1002, 1003, 1005, 1006, 1015, 1016]);
+function qmIgnoreAppMouse(term) {
+  let allow = false;
+  try { allow = localStorage.getItem('qm_app_mouse') === '1'; } catch (_) {}
+  if (allow || !term.parser || !term.parser.registerCsiHandler) return;
+  term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+    const flat = params.map(p => Array.isArray(p) ? p[0] : p);
+    if (!flat.some(p => QM_MOUSE_MODES.has(p))) return false;   // not ours: default handling
+    const rest = flat.filter(p => !QM_MOUSE_MODES.has(p));
+    if (rest.length) setTimeout(() => term.write(`\x1b[?${rest.join(';')}h`), 0);
+    return true;                                                // swallowed
+  });
+}
+// --- end plain drag selects text ---------------------------------------------
 
 for (let i = 0; i < 4; i++) {
   const fitAddon = new FitAddon.FitAddon();
@@ -2641,6 +2674,7 @@ for (let i = 0; i < 4; i++) {
       (event, uri) => { window.open(uri, '_blank', 'noopener,noreferrer'); }
     ));
   }
+  qmIgnoreAppMouse(term);
   term.open(document.getElementById(`term-${i}`));
   // Clickable filesystem paths (opens on the Mac via the server; see makePathLinkProvider)
   try { term.registerLinkProvider(makePathLinkProvider(term, i)); } catch (_) {}
@@ -4943,6 +4977,104 @@ document.addEventListener('paste', (e) => {
   e.preventDefault();
   qmUploadFiles(cmdkTarget(), files);
 });
+
+// --- Copy out of a pane ----------------------------------------------------
+// The panes render through the WebGL addon, so terminal text is painted to a
+// canvas and never exists in the DOM. The browser therefore has nothing to
+// select and nothing for a native Cmd+C or a context-menu Copy to act on:
+// xterm holds the selection internally and expects the host page to supply the
+// copy path. QuadMux never had one, so a line could not be copied out of a
+// pane at all. These bindings are that path.
+//
+// Select with the mouse (double-click = word, triple-click = line), then Cmd+C
+// (Ctrl+Shift+C on Linux/Windows). Right-clicking a selection copies it too.
+// Bare Ctrl+C is deliberately untouched so it still sends SIGINT to Claude.
+
+function qmSelectedTerm() {
+  if (activeShell >= 0 && terms[activeShell] && terms[activeShell].hasSelection()) return terms[activeShell];
+  for (let i = 0; i < terms.length; i++) {
+    if (terms[i] && terms[i].hasSelection()) return terms[i];
+  }
+  return null;
+}
+
+// Clipboard API first; it needs a secure context, which both localhost and the
+// https tailnet URL satisfy. execCommand is the fallback for anything else.
+async function qmCopyText(text) {
+  if (!text) return false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+function qmCopyReport(text, ok) {
+  const n = text.length;
+  showToast(ok ? `Copied ${n} character${n === 1 ? '' : 's'}` : 'Copy failed', !ok);
+}
+
+function qmCopySelection() {
+  const term = qmSelectedTerm();
+  if (!term) return false;
+  const text = term.getSelection();
+  if (!text) return false;
+  qmCopyText(text).then(ok => qmCopyReport(text, ok));
+  return true;
+}
+
+// Capture phase so this wins before xterm's own key handling.
+document.addEventListener('keydown', (e) => {
+  const el = document.activeElement;
+  const tag = (el?.tagName || '').toLowerCase();
+  const inField = tag === 'input' || el?.isContentEditable
+    || (tag === 'textarea' && !el.classList.contains('xterm-helper-textarea'));
+  if (inField) return;
+  const key = (e.key || '').toLowerCase();
+  const macCopy = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && key === 'c';
+  const pcCopy  = e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && key === 'c';
+  if (!macCopy && !pcCopy) return;
+  if (qmCopySelection()) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
+// Any native copy gesture that does reach the page (menu bar, context menu).
+// A real DOM selection elsewhere on the page wins, so this only fills in for
+// the canvas panes.
+document.addEventListener('copy', (e) => {
+  if ((document.getSelection()?.toString() || '').trim()) return;
+  const term = qmSelectedTerm();
+  if (!term || !e.clipboardData) return;
+  const text = term.getSelection();
+  if (!text) return;
+  e.clipboardData.setData('text/plain', text);
+  e.preventDefault();
+});
+
+// Right-click on a selection copies it. rightClickSelectsWord is on, so the
+// first right-click over a word selects it and the second copies it.
+for (let i = 0; i < 4; i++) {
+  shellEls[i].addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.shell-title') || e.target.closest('.shell-search')) return;
+    const term = terms[i];
+    if (!term || !term.hasSelection()) return;
+    const text = term.getSelection();
+    if (!text) return;
+    e.preventDefault();
+    qmCopyText(text).then(ok => qmCopyReport(text, ok));
+  });
+}
 
 // Capture-phase binding so Cmd+K/Ctrl+K works even when a terminal has focus
 // (xterm's own handlers never see the event).

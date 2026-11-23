@@ -62,7 +62,22 @@ def resolve_open_path(raw: str):
         return False, "", "not an absolute path"
     real = os.path.realpath(p)
     if not os.path.exists(real):
-        return False, "", "not found"
+        # A path lifted out of a shell command arrives escaped, e.g.
+        # "Smart\\ Hydration\\ \\(SH\\)". The client linkifies it verbatim, so retry
+        # with the escapes removed before giving up. Only reached when the literal
+        # path does not exist, so a real filename containing a backslash still wins.
+        out, i, n = [], 0, len(p)
+        while i < n:
+            if p[i] == "\\" and i + 1 < n:
+                out.append(p[i + 1]); i += 2
+            else:
+                out.append(p[i]); i += 1
+        unesc = "".join(out)
+        alt = os.path.realpath(os.path.expanduser(unesc))
+        if unesc != p and os.path.exists(alt):
+            real = alt
+        else:
+            return False, "", "not found"
     roots = _open_roots()
     if not any(real == r or real.startswith(r + os.sep) for r in roots):
         return False, "", "outside allowed roots"
