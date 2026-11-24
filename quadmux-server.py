@@ -74,10 +74,42 @@ def _deny_roots():
     return _DENY_ROOTS_CACHE
 
 def is_credential_path(real: str) -> bool:
-    """True when ``real`` (already a realpath) is, or is inside, a credential store."""
-    if os.path.basename(real) in _DENY_BASENAMES:
+    """True when ``real`` (already a realpath) is, or is inside, a credential store.
+
+    Spelling is not identity on macOS: the volume ignores case, and realpath
+    hands back the case it was given, so ~/.SSH/id_ed25519 is the same file as
+    ~/.ssh/id_ed25519 and must not get through as a different string. Compare
+    case-folded, then compare the directories themselves (device and inode) for
+    any other alias the filesystem accepts.
+    """
+    if os.path.basename(real).casefold() in _DENY_BASENAMES:
         return True
-    return any(real == d or real.startswith(d + os.sep) for d in _deny_roots())
+    folded = real.casefold()
+    deny = _deny_roots()
+    for d in deny:
+        df = d.casefold()
+        if folded == df or folded.startswith(df + os.sep):
+            return True
+    deny_ids = set()
+    for d in deny:
+        try:
+            st = os.stat(d)
+            deny_ids.add((st.st_dev, st.st_ino))
+        except OSError:
+            pass
+    p = real
+    while deny_ids:
+        try:
+            st = os.stat(p)
+            if (st.st_dev, st.st_ino) in deny_ids:
+                return True
+        except OSError:
+            pass
+        parent = os.path.dirname(p)
+        if parent == p:
+            break
+        p = parent
+    return False
 
 def resolve_open_path(raw: str):
     """Return (ok, resolved_realpath, error). Rejects anything not an existing
@@ -1079,43 +1111,89 @@ def get_html_content():
 # upgrade included, now has to pass two checks:
 #   Host    must name this machine (loopback, the bind address, its tailnet
 #           name or IPs, or an --allow-host extra). Stops DNS rebinding.
-#   Origin  when a browser sends one, must be an allowed host too, and for a
-#           loopback origin the same port as the request. Stops other sites,
-#           and other local web apps, reaching the pane socket.
+#   Origin  when a browser sends one, must be this QuadMux exactly, port
+#           included: either the same host:port the request was addressed to,
+#           or a `tailscale serve` address that proxies to this server. Stops
+#           other sites, other local web apps, and other services published
+#           under this machine's tailnet name, reaching the pane socket.
+#   Sec-Fetch-Site  on /api/*, must be same-origin or none. Several of those
+#           routes act on a plain GET (start voice services, spend TTS credit),
+#           which another site could otherwise fire with an <img>.
 # A client that sends no Origin (curl, the tray, local scripts) passes on Host
 # alone: this guard closes the browser route, not the local-process one. That
 # needs a per-process token and is a separate step.
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 EXTRA_ALLOWED_HOSTS = set()          # filled from --allow-host
 _TAILNET_RETRY_SECS = 30
-_tailnet_cache = {"at": 0.0, "names": frozenset()}
+_tailnet_cache = {"at": 0.0, "names": frozenset(), "origins": frozenset()}
+LISTEN_PORT = None                   # set in serve(); used to read `tailscale serve`
+
+
+def _tailscale_json(*args):
+    import shutil
+    exe = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    try:
+        out = subprocess.run([exe, *args, "--json"], capture_output=True,
+                             timeout=3, check=True).stdout
+        data = json.loads(out)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def origins_from_serve_status(status: dict, listen_port) -> frozenset:
+    """(host, port) pairs that `tailscale serve` publishes for THIS server, from
+    `tailscale serve status --json`. Port is '' for 443, the https default, to
+    match how a browser writes the Origin. Entries proxying elsewhere are left
+    out: another service under the same tailnet name is not QuadMux."""
+    from urllib.parse import urlsplit
+    found = set()
+    for hostport, conf in ((status or {}).get("Web") or {}).items():
+        handlers = (conf or {}).get("Handlers") or {}
+        target = (handlers.get("/") or {}).get("Proxy") or ""
+        try:
+            t = urlsplit(target if "://" in target else "http://" + target)
+            ok = (t.hostname or "").lower() in _LOOPBACK_HOSTS and t.port == listen_port
+        except ValueError:
+            ok = False
+        if not ok or listen_port is None:
+            continue
+        host, port = _split_hostport(str(hostport))
+        if host:
+            found.add((host, "" if port == "443" else port))
+    return frozenset(found)
+
+
+def _serve_origins():
+    return origins_from_serve_status(_tailscale_json("serve", "status"), LISTEN_PORT)
 
 
 def _tailnet_names():
     """This machine's tailnet DNS name and IPs, or an empty set if Tailscale is
     not installed or not answering."""
-    import shutil
-    exe = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-    try:
-        out = subprocess.run([exe, "status", "--json"], capture_output=True,
-                             timeout=3, check=True).stdout
-        me = json.loads(out).get("Self") or {}
-    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+    me = _tailscale_json("status").get("Self") or {}
+    if not isinstance(me, dict):
         return frozenset()
     names = {str(ip).lower() for ip in (me.get("TailscaleIPs") or [])}
     names.add(str(me.get("DNSName") or "").rstrip(".").lower())
     return frozenset(n for n in names if n)
 
 
-def allowed_hosts(refresh: bool = False):
-    """Hostnames (no port) a request may address this server by."""
+def _refresh_tailnet(refresh: bool = False):
     now = time.time()
     never = _tailnet_cache["at"] == 0.0
     if never or (refresh and now - _tailnet_cache["at"] >= _TAILNET_RETRY_SECS):
         _tailnet_cache["at"] = now
-        names = _tailnet_names()
+        names, origins = _tailnet_names(), _serve_origins()
         if names:                    # keep the last good answer if Tailscale blips
             _tailnet_cache["names"] = names
+        if origins:
+            _tailnet_cache["origins"] = origins
+
+
+def allowed_hosts(refresh: bool = False):
+    """Hostnames (no port) a request may address this server by."""
+    _refresh_tailnet(refresh)
     return (_LOOPBACK_HOSTS | {BIND_HOST.lower()}
             | {h.lower() for h in EXTRA_ALLOWED_HOSTS} | _tailnet_cache["names"])
 
@@ -1125,6 +1203,14 @@ def _host_allowed(name: str) -> bool:
         return True
     # Tailscale may have come up after the first lookup: ask again, rate limited.
     return name in allowed_hosts(refresh=True)
+
+
+def _is_served_origin(pair) -> bool:
+    _refresh_tailnet()
+    if pair in _tailnet_cache["origins"]:
+        return True
+    _refresh_tailnet(refresh=True)   # serve may have been set up since; rate limited
+    return pair in _tailnet_cache["origins"]
 
 
 def _split_hostport(value: str):
@@ -1167,22 +1253,28 @@ def request_rejection(headers, path: str = "") -> str:
         try:
             o = urlsplit(origin.strip())
             ohost = (o.hostname or "").rstrip(".").lower()
-            oport = str(o.port or "")
             scheme = o.scheme
+            oport = str(o.port or "")
+            if (scheme, oport) in (("https", "443"), ("http", "80")):
+                oport = ""
         except ValueError:
             ohost, oport, scheme = "", "", ""
         if scheme not in ("http", "https") or not ohost or not _host_allowed(ohost):
             return f"origin {origin!r} not allowed"
-        if ohost in _LOOPBACK_HOSTS and (ohost, oport) != (host, port):
-            return f"origin {origin!r} is a different local site"
-    # Files are only for QuadMux's own page (same-origin) or a URL the user
-    # opened directly (none). Anything another site caused, a link or frame as
-    # much as a script or img, is refused. The response is CSP-sandboxed as well,
-    # so this is a second lock, not the only one. Clients that send no
-    # Sec-Fetch-Site (curl, old browsers) are not browsers being steered.
+        # Same host AND port as the request, or an address tailscale serve
+        # publishes for this server (covers a proxy that rewrites Host).
+        if (ohost, oport) != (host, port) and not _is_served_origin((ohost, oport)):
+            return f"origin {origin!r} is a different site on this machine"
+    # /api/* is only for QuadMux's own page (same-origin) or a URL the user
+    # opened directly (none). Anything another site caused is refused, a link
+    # or frame as much as a script or img: /api/file would show a local file,
+    # and /api/voice/start and /api/tts/* act on a bare GET. File responses are
+    # CSP-sandboxed as well, so this is a second lock there, not the only one.
+    # Clients that send no Sec-Fetch-Site (curl, old browsers) are not browsers
+    # being steered. The UI page itself stays reachable from any link.
     fetch_site = (headers.get("Sec-Fetch-Site") or "").lower()
-    if path.startswith("/api/file") and fetch_site not in ("", "same-origin", "none"):
-        return f"file request from another site ({fetch_site})"
+    if path.startswith("/api/") and fetch_site not in ("", "same-origin", "none"):
+        return f"api request from another site ({fetch_site})"
     return ""
 # --- end request guard -------------------------------------------------------
 
@@ -1585,6 +1677,8 @@ async def handler(ws):
 
 
 async def serve(port):
+    global LISTEN_PORT
+    LISTEN_PORT = port
     global loop
     loop = asyncio.get_running_loop()
     asyncio.create_task(autosave_loop())

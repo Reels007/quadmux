@@ -23,6 +23,8 @@ def qm(monkeypatch):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     monkeypatch.setattr(mod, "_tailnet_names", lambda: frozenset({TAILNET, "100.64.0.7"}))
+    # tailscale serve publishes this server on :443 and :8443 of the tailnet name.
+    monkeypatch.setattr(mod, "_serve_origins", lambda: frozenset({(TAILNET, ""), (TAILNET, "8443")}))
     return mod
 
 
@@ -96,8 +98,38 @@ def test_foreign_origin_refused(qm, origin):
 def test_other_local_port_refused(qm):
     # Another web app on this Mac (a dev server, say) is not QuadMux.
     why = _why(qm, Host="localhost:8766", Origin="http://localhost:3000")
-    assert "different local site" in why
-    assert "different local site" in _why(qm, Host="localhost:8766", Origin="http://127.0.0.1:8766")
+    assert "different site on this machine" in why
+    assert "different site on this machine" in _why(
+        qm, Host="localhost:8766", Origin="http://127.0.0.1:8766")
+
+
+def test_other_tailnet_port_refused(qm):
+    # Another service published under the same tailnet name is not QuadMux.
+    for host in (TAILNET + ":8443", "localhost:8766"):
+        why = _why(qm, Host=host, Origin=f"https://{TAILNET}:8000")
+        assert "different site on this machine" in why
+
+
+def test_served_origin_passes_when_proxy_rewrites_host(qm):
+    assert _why(qm, Host="localhost:8766", Origin=f"https://{TAILNET}:8443") == ""
+    assert _why(qm, Host="localhost:8766", Origin=f"https://{TAILNET}") == ""
+    assert _why(qm, Host="localhost:8766", Origin=f"https://{TAILNET}:443") == ""
+
+
+def test_origins_from_serve_status(qm):
+    status = {"Web": {
+        f"{TAILNET}:443": {"Handlers": {"/": {"Proxy": "http://localhost:8766"}}},
+        f"{TAILNET}:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8766"},
+                                         "/kokoro": {"Proxy": "http://localhost:8880"}}},
+        f"{TAILNET}:8000": {"Handlers": {"/": {"Proxy": "http://localhost:8000"}}},
+        f"{TAILNET}:9000": {"Handlers": {"/x": {"Proxy": "http://localhost:8766"}}},
+        f"{TAILNET}:9001": {"Handlers": {"/": {"Proxy": "http://otherbox:8766"}}},
+        f"{TAILNET}:9002": {"Handlers": {"/": {"Path": "/srv"}}},
+    }}
+    assert qm.origins_from_serve_status(status, 8766) == {(TAILNET, ""), (TAILNET, "8443")}
+    assert qm.origins_from_serve_status(status, None) == frozenset()
+    assert qm.origins_from_serve_status({}, 8766) == frozenset()
+    assert qm.origins_from_serve_status({"Web": None}, 8766) == frozenset()
 
 
 def test_repeated_host_or_origin_refused(qm):
@@ -108,29 +140,34 @@ def test_repeated_host_or_origin_refused(qm):
     assert qm.request_rejection(h, "/") == "repeated Host or Origin header"
 
 
-# --- /api/file reached from another site ------------------------------------
+# --- /api/* reached from another site ---------------------------------------
 
+API_PATHS = ["/api/file?path=/tmp/x", "/api/voice/start", "/api/tts/elevenlabs?text=hi",
+             "/api/account", "/api/health/voice"]
+
+
+@pytest.mark.parametrize("path", API_PATHS)
 @pytest.mark.parametrize("site,mode", [
     ("cross-site", "no-cors"),      # <script src> / <img src> on another site
     ("cross-site", "navigate"),     # a link or frame on another site
     ("same-site", "navigate"),      # another port on this machine's name
     ("same-site", "cors"),
 ])
-def test_file_request_from_another_site_refused(qm, site, mode):
-    why = _why(qm, "/api/file?path=/tmp/x", Host="localhost:8766",
-               Sec_Fetch_Site=site, Sec_Fetch_Mode=mode)
-    assert why == f"file request from another site ({site})"
+def test_api_request_from_another_site_refused(qm, path, site, mode):
+    why = _why(qm, path, Host="localhost:8766", Sec_Fetch_Site=site, Sec_Fetch_Mode=mode)
+    assert why == f"api request from another site ({site})"
 
 
+@pytest.mark.parametrize("path", API_PATHS)
 @pytest.mark.parametrize("site", ["same-origin", "none", None])
-def test_file_request_from_quadmux_or_typed_url_passes(qm, site):
+def test_api_request_from_quadmux_or_typed_url_passes(qm, path, site):
     h = {"Host": "localhost:8766"}
     if site:
         h["Sec_Fetch_Site"] = site
-    assert _why(qm, "/api/file?path=/tmp/x", **h) == ""
+    assert _why(qm, path, **h) == ""
 
 
-def test_fetch_site_only_gates_the_file_route(qm):
+def test_fetch_site_does_not_gate_the_ui_page(qm):
     # The UI itself can be opened from a bookmark page or a link anywhere.
     assert _why(qm, "/", Host="localhost:8766",
                 Sec_Fetch_Site="cross-site", Sec_Fetch_Mode="navigate") == ""
@@ -201,3 +238,37 @@ def test_ordinary_files_still_served(qm, monkeypatch, tmp_path):
     g.write_text("fine")
     assert qm.resolve_open_path(str(f))[0]
     assert qm.resolve_open_path(str(g))[0]
+
+
+@pytest.mark.parametrize("alias,real_rel", [
+    (".SSH/id_ed25519", ".ssh/id_ed25519"),          # case-insensitive volume
+    (".Ssh/ID_ED25519", ".ssh/id_ed25519"),
+    ("Library/keychains/login.keychain-db", "Library/Keychains/login.keychain-db"),
+    (".CLAUDE.JSON", ".claude.json"),
+    (".claude/.Credentials.JSON", ".claude/.credentials.json"),
+])
+def test_case_variants_do_not_bypass(qm, monkeypatch, tmp_path, alias, real_rel):
+    home = _home(qm, monkeypatch, tmp_path)
+    target = home / real_rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("secret")
+    ok, _, err = qm.resolve_open_path(str(home / alias))
+    # On a case-sensitive volume the alias simply does not exist; either way
+    # the secret must not come back.
+    assert not ok and err in ("blocked: credential location", "not found")
+    status, _, body = qm.build_file_response(str(home / alias))
+    assert status == 404 and b"secret" not in body
+    if os.path.exists(str(home / alias)):
+        assert err == "blocked: credential location"
+
+
+def test_identity_check_catches_respelled_directory(qm, monkeypatch, tmp_path):
+    # Even if string comparison is defeated, the directory itself is recognised.
+    home = _home(qm, monkeypatch, tmp_path)
+    (home / ".ssh").mkdir()
+    (home / ".ssh" / "key").write_text("secret")
+    real = os.path.join(os.path.realpath(str(home)), ".ssh", "key")
+    assert qm.is_credential_path(real)
+    ids_only = os.path.join(os.path.realpath(str(home)), ".ssh")
+    monkeypatch.setattr(qm, "_deny_roots", lambda: [os.path.join(str(home), ".", ".ssh")])
+    assert qm.is_credential_path(os.path.join(ids_only, "key"))
