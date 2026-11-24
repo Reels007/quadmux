@@ -51,6 +51,34 @@ def _open_roots():
         _OPEN_ROOTS_CACHE = [home, "/tmp", "/private/tmp", "/private/var/folders", "/Volumes"]
     return _OPEN_ROOTS_CACHE
 
+# Credential stores are never opened or served, even though they sit under an
+# allowed root: /api/file hands the bytes to whoever asked, so the home-folder
+# root on its own would serve SSH keys and OAuth tokens. Paths are relative to
+# the home folder; a blocked directory blocks everything beneath it.
+_DENY_HOME_DIRS = (
+    ".ssh", ".aws", ".gnupg", ".gws", ".kube", ".docker", ".azure",
+    ".config/gcloud", ".config/gh", ".config/op",
+    "Library/Keychains", "Library/Cookies",
+    "Library/Application Support/Google/Chrome",
+    "Library/Application Support/Firefox",
+    "Library/Application Support/com.apple.TCC",
+)
+_DENY_BASENAMES = frozenset({".netrc", ".npmrc", ".pypirc", ".git-credentials",
+                             ".credentials.json", ".claude.json"})
+_DENY_ROOTS_CACHE = None
+def _deny_roots():
+    global _DENY_ROOTS_CACHE
+    if _DENY_ROOTS_CACHE is None:
+        home = os.path.realpath(os.path.expanduser("~"))
+        _DENY_ROOTS_CACHE = [os.path.join(home, d) for d in _DENY_HOME_DIRS]
+    return _DENY_ROOTS_CACHE
+
+def is_credential_path(real: str) -> bool:
+    """True when ``real`` (already a realpath) is, or is inside, a credential store."""
+    if os.path.basename(real) in _DENY_BASENAMES:
+        return True
+    return any(real == d or real.startswith(d + os.sep) for d in _deny_roots())
+
 def resolve_open_path(raw: str):
     """Return (ok, resolved_realpath, error). Rejects anything not an existing
     absolute path under an allowed root."""
@@ -81,6 +109,8 @@ def resolve_open_path(raw: str):
     roots = _open_roots()
     if not any(real == r or real.startswith(r + os.sep) for r in roots):
         return False, "", "outside allowed roots"
+    if is_credential_path(real):
+        return False, "", "blocked: credential location"
     return True, real, ""
 
 def launch_open(path: str):
@@ -1041,13 +1071,138 @@ def get_html_content():
     return "<html><body><h1>quadmux.html not found</h1></body></html>"
 
 
+# --- request guard -----------------------------------------------------------
+# Pane input is code execution, and until 24 Nov 2026 nothing checked who was
+# asking. Binding to localhost does not cover it: a browser lets ANY web page
+# open ws://localhost:PORT, so a page open on this Mac could type into a pane,
+# and a DNS-rebinding page could read /api/file. Every request, the WebSocket
+# upgrade included, now has to pass two checks:
+#   Host    must name this machine (loopback, the bind address, its tailnet
+#           name or IPs, or an --allow-host extra). Stops DNS rebinding.
+#   Origin  when a browser sends one, must be an allowed host too, and for a
+#           loopback origin the same port as the request. Stops other sites,
+#           and other local web apps, reaching the pane socket.
+# A client that sends no Origin (curl, the tray, local scripts) passes on Host
+# alone: this guard closes the browser route, not the local-process one. That
+# needs a per-process token and is a separate step.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+EXTRA_ALLOWED_HOSTS = set()          # filled from --allow-host
+_TAILNET_RETRY_SECS = 30
+_tailnet_cache = {"at": 0.0, "names": frozenset()}
+
+
+def _tailnet_names():
+    """This machine's tailnet DNS name and IPs, or an empty set if Tailscale is
+    not installed or not answering."""
+    import shutil
+    exe = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    try:
+        out = subprocess.run([exe, "status", "--json"], capture_output=True,
+                             timeout=3, check=True).stdout
+        me = json.loads(out).get("Self") or {}
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+        return frozenset()
+    names = {str(ip).lower() for ip in (me.get("TailscaleIPs") or [])}
+    names.add(str(me.get("DNSName") or "").rstrip(".").lower())
+    return frozenset(n for n in names if n)
+
+
+def allowed_hosts(refresh: bool = False):
+    """Hostnames (no port) a request may address this server by."""
+    now = time.time()
+    never = _tailnet_cache["at"] == 0.0
+    if never or (refresh and now - _tailnet_cache["at"] >= _TAILNET_RETRY_SECS):
+        _tailnet_cache["at"] = now
+        names = _tailnet_names()
+        if names:                    # keep the last good answer if Tailscale blips
+            _tailnet_cache["names"] = names
+    return (_LOOPBACK_HOSTS | {BIND_HOST.lower()}
+            | {h.lower() for h in EXTRA_ALLOWED_HOSTS} | _tailnet_cache["names"])
+
+
+def _host_allowed(name: str) -> bool:
+    if name in allowed_hosts():
+        return True
+    # Tailscale may have come up after the first lookup: ask again, rate limited.
+    return name in allowed_hosts(refresh=True)
+
+
+def _split_hostport(value: str):
+    """'Host' header value -> (hostname, port), lowercased, port '' if absent."""
+    v = (value or "").strip().lower()
+    if v.startswith("["):
+        end = v.find("]")
+        if end < 0:
+            return "", ""
+        rest = v[end + 1:]
+        return v[1:end], (rest[1:] if rest.startswith(":") else "")
+    if v.count(":") == 1:
+        host, port = v.split(":")
+        return host.rstrip("."), port
+    return v.rstrip("."), ""
+
+
+def _single_header(headers, name: str):
+    """(value_or_None, repeated). A header sent twice is ambiguous: which copy a
+    proxy or browser honoured is not knowable here, so the caller refuses it."""
+    get_all = getattr(headers, "get_all", None)
+    values = get_all(name) if get_all else ([headers[name]] if name in headers else [])
+    if len(values) > 1:
+        return None, True
+    return (values[0] if values else None), False
+
+
+def request_rejection(headers, path: str = "") -> str:
+    """Why this request must be refused, or '' when it may proceed."""
+    from urllib.parse import urlsplit
+    host_hdr, host_dup = _single_header(headers, "Host")
+    origin, origin_dup = _single_header(headers, "Origin")
+    if host_dup or origin_dup:
+        return "repeated Host or Origin header"
+    host_hdr = host_hdr or ""
+    host, port = _split_hostport(host_hdr)
+    if not host or not _host_allowed(host):
+        return f"host {host_hdr!r} not allowed"
+    if origin is not None:
+        try:
+            o = urlsplit(origin.strip())
+            ohost = (o.hostname or "").rstrip(".").lower()
+            oport = str(o.port or "")
+            scheme = o.scheme
+        except ValueError:
+            ohost, oport, scheme = "", "", ""
+        if scheme not in ("http", "https") or not ohost or not _host_allowed(ohost):
+            return f"origin {origin!r} not allowed"
+        if ohost in _LOOPBACK_HOSTS and (ohost, oport) != (host, port):
+            return f"origin {origin!r} is a different local site"
+    # Files are only for QuadMux's own page (same-origin) or a URL the user
+    # opened directly (none). Anything another site caused, a link or frame as
+    # much as a script or img, is refused. The response is CSP-sandboxed as well,
+    # so this is a second lock, not the only one. Clients that send no
+    # Sec-Fetch-Site (curl, old browsers) are not browsers being steered.
+    fetch_site = (headers.get("Sec-Fetch-Site") or "").lower()
+    if path.startswith("/api/file") and fetch_site not in ("", "same-origin", "none"):
+        return f"file request from another site ({fetch_site})"
+    return ""
+# --- end request guard -------------------------------------------------------
+
+
 async def http_handler(connection, request):
     """Serve API routes or the HTML UI on HTTP requests (non-WebSocket)."""
-    if request.headers.get("Upgrade") is not None:
-        return  # let websockets handle the upgrade
-
     from websockets.http11 import Response
     from websockets.datastructures import Headers
+
+    why = request_rejection(request.headers, getattr(request, "path", "") or "")
+    if why:
+        print(f"  Rejected request: {why} (path={str(getattr(request, 'path', ''))[:80]!r})",
+              flush=True)
+        return Response(403, "Forbidden", Headers([
+            ("Content-Type", "text/plain; charset=utf-8"),
+            ("Cache-Control", "no-store"),
+        ]), b"forbidden")
+
+    if request.headers.get("Upgrade") is not None:
+        return  # let websockets handle the upgrade
 
     # Which Claude account every pane is running as. Read fresh per request so a
     # /login in a pane shows up on the next page load without a restart.
@@ -1513,6 +1668,9 @@ def main():
     parser.add_argument("--host", type=str, default="localhost",
                         help="Interface to bind (default: localhost). Use the Tailscale IP, e.g. 100.88.87.92, to serve the tailnet.")
     parser.add_argument("--port", type=int, default=8766, help="WebSocket/HTTP port (default: 8766; 8765 is used by voicemode MCP)")
+    parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                        help="Extra hostname or IP the UI may be reached by (repeatable). Loopback, --host and "
+                             "this machine's tailnet name and IPs are always allowed; anything else is refused.")
     parser.add_argument("--preset", type=str, default=None,
                         help=f"Role preset (one of: {', '.join(presets_mod.list_preset_names())}). "
                              "Each role becomes one pane with its own system prompt.")
@@ -1528,6 +1686,7 @@ def main():
     args = parser.parse_args()
     global BIND_HOST
     BIND_HOST = args.host
+    EXTRA_ALLOWED_HOSTS.update(h.strip().rstrip(".").lower() for h in args.allow_host if h.strip())
 
     # Resolve preset + worktrees first so NUM_SHELLS matches the preset size.
     preset_roles = None
