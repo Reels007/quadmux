@@ -2674,12 +2674,21 @@ function qmIgnoreAppMouse(term) {
 // scrollback of its own to move, so panes stopped scrolling at all (Sean, 23 Nov
 // 2026). Synthesise only the wheel reports and send those on: Claude Code
 // scrolls, while press and drag stay with the selection.
+//
+// The only test is whether the app asked for the mouse. This used to also
+// require xterm to be in the alternate screen, but xterm only knows that from
+// ?1049h, which Claude Code sends once at startup. After a page reload that
+// byte is long gone from the 200-chunk replay, xterm sits in the normal buffer,
+// and the wheel was dropped in every pane (Sean, 24 Nov 2026). A real terminal
+// sends the wheel to a mouse-tracking app whatever the buffer, so do the same.
+// Capture phase plus stopPropagation keeps xterm from also acting on a wheel we
+// forwarded: it would scroll stale replay scrollback, or in the alternate
+// screen turn the wheel into arrow keys.
 function qmWheelToApp(term, idx, el) {
   if (!el) return;
   el.addEventListener('wheel', (e) => {
     const m = term._qmAppMouse;
-    if (!m || !m.any) return;                             // app never asked for the mouse
-    if (term.buffer.active.type !== 'alternate') return;  // normal buffer: xterm scrolls it
+    if (!m || !m.any) return;                             // app never asked for the mouse: xterm scrolls
     const step = e.deltaMode === 1 ? 1 : (e.deltaMode === 2 ? term.rows : 16);
     let lines = Math.trunc(e.deltaY / step);
     if (!lines && e.deltaY) lines = e.deltaY > 0 ? 1 : -1;
@@ -2697,9 +2706,31 @@ function qmWheelToApp(term, idx, el) {
     }
     safeSendInput({ type: 'input', shell: idx, text: seq, raw: true });
     e.preventDefault();
-  }, { passive: false });
+    e.stopPropagation();
+  }, { passive: false, capture: true });
 }
 // --- end wheel still scrolls the app -----------------------------------------
+
+// --- Re-learn the app's mouse modes after a (re)connect ----------------------
+// qmIgnoreAppMouse learns that a pane wants the mouse by seeing the enable go
+// past. A freshly loaded page only sees the last 200 chunks, and a pane that is
+// mid-turn fills those with spinner frames, so the enable is often not in the
+// replay and the wheel stays dead until Claude happens to repeat it. Ask the
+// app instead: a one-column resize and back makes Claude Code redraw and
+// re-send its mouse enables (checked against a live busy pane, 24 Nov 2026).
+// It is a pure window-size change, so nothing is typed into the pane.
+function qmRelearnAppModes() {
+  const sock = ws;
+  const send = (i, cols) => {
+    if (sock !== ws || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'resize', shell: i, cols, rows: terms[i].rows }));
+  };
+  for (let i = 0; i < 4; i++) if (terms[i].cols > 20) send(i, terms[i].cols - 1);
+  // Restore in a later tick: two size changes inside one tick can reach the app
+  // as a single signal showing its old size, and it then does nothing.
+  setTimeout(() => { for (let i = 0; i < 4; i++) send(i, terms[i].cols); }, 700);
+}
+// --- end re-learn the app's mouse modes --------------------------------------
 
 for (let i = 0; i < 4; i++) {
   const fitAddon = new FitAddon.FitAddon();
@@ -3071,6 +3102,7 @@ function connect() {
       ws.send(JSON.stringify({ type: 'resize', shell: i, cols: terms[i].cols, rows: terms[i].rows }));
     }
     ws.send(JSON.stringify({ type: 'health_check' }));
+    qmRelearnAppModes();
     // Flush any input typed while disconnected.
     while (pendingInput.length) ws.send(JSON.stringify(pendingInput.shift()));
   };
